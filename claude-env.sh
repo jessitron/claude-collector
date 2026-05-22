@@ -55,9 +55,16 @@ export OTEL_METRICS_INCLUDE_VERSION=true
 export OTEL_METRICS_INCLUDE_SESSION_ID=true
 export OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true
 
-# ---- Faster export while debugging ----
-# Defaults: metrics 60s, logs 5s. Comment out for production-y use.
+# ---- Export intervals (all in milliseconds) ----
+# Claude Code exposes one interval knob per signal. Defaults per
+# https://code.claude.com/docs/en/monitoring-usage:
+#   OTEL_METRIC_EXPORT_INTERVAL  default 60000  (60s)
+#   OTEL_LOGS_EXPORT_INTERVAL    default  5000  ( 5s)
+#   OTEL_TRACES_EXPORT_INTERVAL  default  5000  ( 5s)  -- span batch interval
+# We leave metrics at the 60s default (low value in seeing them faster) and
+# push logs + traces down so interactive sessions feel near-live in Honeycomb.
 export OTEL_METRIC_EXPORT_INTERVAL=60000
-export OTEL_LOGS_EXPORT_INTERVAL=2000
+export OTEL_LOGS_EXPORT_INTERVAL=1000
+export OTEL_TRACES_EXPORT_INTERVAL=1000
 
 echo "Claude Code will send telemetry to ${OTEL_EXPORTER_OTLP_ENDPOINT}"
