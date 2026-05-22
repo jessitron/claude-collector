@@ -25,17 +25,18 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4327
 # Custom resource attributes. Add anything you want to tag every span with.
 export OTEL_RESOURCE_ATTRIBUTES="source=claude-code"
 
-# ---- Detailed beta tracing -- DISABLED ----
-# When enabled, each `chat` span emits a span link with link.type=parent_of
-# pointing to a span in a SEPARATE trace, with a trace ID that is not in OTel
-# format (probably an internal Anthropic identifier). We never receive those
-# linked traces -- nothing seems to be sent to BETA_TRACING_ENDPOINT in
-# practice -- so the links are dead ends that just clutter the data and
-# confuse investigation. Leave commented unless you specifically want to
-# experiment with this beta feature.
+# ---- Detailed beta tracing (richer per-LLM-call trace + logs) ----
+# Each `chat` span gets a span link of link.type=parent_of pointing at a
+# detailed sub-trace exported through this knob.
 #
-# export ENABLE_BETA_TRACING_DETAILED=1
-# export BETA_TRACING_ENDPOINT=http://localhost:4327
+# IMPORTANT: BETA_TRACING_ENDPOINT speaks OTLP *HTTP*, not gRPC.
+# Claude Code POSTs to $BETA_TRACING_ENDPOINT/v1/traces and /v1/logs --
+# those are HTTP-only paths. If you point this at our gRPC port (4327)
+# the requests silently go nowhere and the `parent_of` links look like
+# dead ends. Point it at the HTTP port (4328) instead.
+# Cross-ref: github.com/honeycombio/autobots/blob/main/otelcol/collector.yaml
+export ENABLE_BETA_TRACING_DETAILED=1
+export BETA_TRACING_ENDPOINT=http://localhost:4328
 
 # ---- Content gates: include prompts, tool I/O, and raw API bodies ----
 # Each of these reveals sensitive content. Comment any of them out for
