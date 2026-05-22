@@ -25,19 +25,17 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4327
 # Custom resource attributes. Add anything you want to tag every span with.
 export OTEL_RESOURCE_ATTRIBUTES="source=claude-code"
 
-# ---- Detailed beta tracing (claude_code.hook spans + richer content attrs) ----
-# Per the docs: requires your org to be allowlisted for the feature in
-# *interactive* CLI sessions. Agent SDK and `claude -p` sessions are not gated.
-# If interactive runs don't produce claude_code.hook spans after enabling this,
-# allowlisting is the likely cause.
-# TODO: verify whether modernity is allowlisted -- update this comment once
-# we've checked.
+# ---- Detailed beta tracing -- DISABLED ----
+# When enabled, each `chat` span emits a span link with link.type=parent_of
+# pointing to a span in a SEPARATE trace, with a trace ID that is not in OTel
+# format (probably an internal Anthropic identifier). We never receive those
+# linked traces -- nothing seems to be sent to BETA_TRACING_ENDPOINT in
+# practice -- so the links are dead ends that just clutter the data and
+# confuse investigation. Leave commented unless you specifically want to
+# experiment with this beta feature.
 #
-# BETA_TRACING_ENDPOINT points at the local collector so detailed data flows
-# through our transforms. If Claude Code turns out to want a real Honeycomb
-# endpoint there, switch this to api.honeycomb.io:443.
-export ENABLE_BETA_TRACING_DETAILED=1
-export BETA_TRACING_ENDPOINT=http://localhost:4327
+# export ENABLE_BETA_TRACING_DETAILED=1
+# export BETA_TRACING_ENDPOINT=http://localhost:4327
 
 # ---- Content gates: include prompts, tool I/O, and raw API bodies ----
 # Each of these reveals sensitive content. Comment any of them out for

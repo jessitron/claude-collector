@@ -97,4 +97,8 @@ Every span also gets `gen_ai.conversation.id` (copied from `session.id`) and `ge
 - The timeline span for a tool call is the parent `claude_code.tool`, whose duration includes the time spent waiting for permission. The more accurate `claude_code.tool.execution` child doesn't carry `tool_name`, so we can't easily synthesize `execute_tool {tool_name}` on it without cross-span propagation.
 - A sub-agent's own nested spans (the `claude_code.llm_request` / `claude_code.tool` spans inside a Task call) inherit the default `gen_ai.agent.name = "Claude Code"` instead of the sub-agent's name, for the same reason.
 
+### What we tried that didn't work: `ENABLE_BETA_TRACING_DETAILED`
+
+Claude Code has a beta feature, gated by `ENABLE_BETA_TRACING_DETAILED=1` and `BETA_TRACING_ENDPOINT=...`, that's supposed to emit a richer, separate trace per LLM call. When enabled, each `chat` span gets a span link of `link.type = parent_of` pointing to a span in another trace — but the linked trace IDs are not in OTel format and we never receive any data at the BETA endpoint. The result is dead-end links that confuse investigation. `claude-env.sh` ships with both env vars commented out for this reason.
+
 See `notes/` for the full mapping rationale and a list of open questions.
