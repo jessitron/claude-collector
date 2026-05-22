@@ -20,10 +20,10 @@ export HONEYCOMB_API_KEY=<your key for the destination environment>
 docker compose up
 ```
 
-The collector listens on the standard OTLP ports:
+The collector listens on non-standard host ports (the OTLP defaults of 4317/4318 are left free for other collectors on your machine):
 
-- gRPC: `localhost:4317`
-- HTTP: `localhost:4318`
+- gRPC: `localhost:4327`
+- HTTP: `localhost:4328`
 
 If you'd rather run the binary directly, install [`otelcol-contrib`](https://github.com/open-telemetry/opentelemetry-collector-releases) (the `transform` processor is in contrib, not core) and run `otelcol-contrib --config config.yaml` with the same env vars set.
 
@@ -45,7 +45,7 @@ export OTEL_TRACES_EXPORTER=otlp
 
 # Send to the local collector
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4327
 
 # Optional: shorter intervals while you're verifying the setup
 export OTEL_METRIC_EXPORT_INTERVAL=10000  # 10s (default 60s)

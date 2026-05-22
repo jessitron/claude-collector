@@ -6,8 +6,10 @@ services:
     volumes:
       - ./config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
+      # Host ports are offset from the OTLP defaults (4317/4318) so the
+      # standard ports stay free for other collectors on this machine.
+      - "4327:4317"
+      - "4328:4318"
     environment:
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY:?HONEYCOMB_API_KEY is required}
       HONEYCOMB_API_ENDPOINT: ${HONEYCOMB_API_ENDPOINT:-api.honeycomb.io:443}

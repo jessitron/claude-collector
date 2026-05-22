@@ -18,7 +18,7 @@ source claude-env.sh
 claude
 ```
 
-The collector listens on `localhost:4317` (gRPC) and `localhost:4318` (HTTP) and exports to Honeycomb. The `claude-code-usage` Honeycomb environment is where jessitron tests this.
+The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and exports to Honeycomb. These are non-standard host ports — the OTLP defaults (4317/4318) are left free for other collectors on the machine. Inside the container, the receiver still binds to 4317/4318; `docker-compose.yaml` remaps the host side. The `claude-code-usage` Honeycomb environment is where jessitron tests this.
 
 ## File map
 

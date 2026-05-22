@@ -13,9 +13,10 @@ export OTEL_METRICS_EXPORTER=otlp
 export OTEL_LOGS_EXPORTER=otlp
 export OTEL_TRACES_EXPORTER=otlp
 
-# Point at the local collector on the standard OTLP gRPC port.
+# Point at the local collector. We use non-standard host ports (4327 gRPC /
+# 4328 HTTP) so the default OTLP ports stay free for other collectors.
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4327
 
 # service.name -> Honeycomb dataset name for traces.
 # Commented out so we can see what Claude Code defaults service.name to.
@@ -36,7 +37,7 @@ export OTEL_RESOURCE_ATTRIBUTES="source=claude-code"
 # through our transforms. If Claude Code turns out to want a real Honeycomb
 # endpoint there, switch this to api.honeycomb.io:443.
 export ENABLE_BETA_TRACING_DETAILED=1
-export BETA_TRACING_ENDPOINT=http://localhost:4317
+export BETA_TRACING_ENDPOINT=http://localhost:4327
 
 # ---- Content gates: include prompts, tool I/O, and raw API bodies ----
 # Each of these reveals sensitive content. Comment any of them out for
@@ -56,7 +57,7 @@ export OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true
 
 # ---- Faster export while debugging ----
 # Defaults: metrics 60s, logs 5s. Comment out for production-y use.
-export OTEL_METRIC_EXPORT_INTERVAL=10000
-export OTEL_LOGS_EXPORT_INTERVAL=5000
+export OTEL_METRIC_EXPORT_INTERVAL=60000
+export OTEL_LOGS_EXPORT_INTERVAL=2000
 
 echo "Claude Code will send telemetry to ${OTEL_EXPORTER_OTLP_ENDPOINT}"
