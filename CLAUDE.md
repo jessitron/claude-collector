@@ -29,6 +29,7 @@ The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and
 | `run`                         | Sources `.env`, preflight-checks `HONEYCOMB_API_KEY`, `docker compose up`. |
 | `claude-env.sh`               | Sourceable env vars for `claude` — telemetry on, OTLP endpoint pointed at the collector, content gates set. |
 | `.env.example` / `.env`       | `HONEYCOMB_API_KEY` (and optionally `HONEYCOMB_API_ENDPOINT`). `.env` is gitignored. |
+| `scripts/validate-config.sh`  | Validate `config.yaml` against the same otelcol-contrib image we run, without bringing the receiver up. Catches YAML parse errors and OTTL errors. Run before `docker compose restart` on non-trivial edits — saves a "container failed to start, dig through compose logs" round trip. |
 | `notes/`                      | Working notes, design rationale, attribute-mapping table, open questions. |
 
 ## Pipeline architecture
@@ -79,8 +80,9 @@ The defensive `where` on the `set(...)` is belt-and-suspenders against the same 
 After editing `config.yaml`:
 
 1. Bump `collector.claude-collector.version` in all three places (`transform/mark`).
-2. `docker compose restart`.
-3. Have jessitron run something in her claude session, then query Honeycomb:
+2. Run `scripts/validate-config.sh` — catches YAML parse errors and OTTL errors against the same otelcol-contrib image we run. Exit code 0 = good. Skipping this and going straight to `docker compose restart` leaves you debugging from `docker compose logs` after the container has already died, which is slower.
+3. `docker compose restart`.
+4. Have jessitron run something in her claude session, then query Honeycomb:
 
 ```
 dataset: claude-code (in env claude-code-usage)
