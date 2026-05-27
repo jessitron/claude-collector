@@ -21,17 +21,17 @@ processors:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.3")
+          - set(attributes["collector.claude-collector.version"], "0.4")
     metric_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.3")
+          - set(attributes["collector.claude-collector.version"], "0.4")
     log_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.3")
+          - set(attributes["collector.claude-collector.version"], "0.4")
 
   transform/agent_timeline:
     error_mode: ignore
@@ -43,12 +43,18 @@ processors:
           - set(attributes["gen_ai.agent.name"], "Claude Code")
 
       # claude_code.interaction  ->  invoke_agent Claude Code
+      # Also wrap user_prompt into the gen_ai.input.messages JSON shape Honeycomb's
+      # Agent Timeline expects (per OTel GenAI semconv: an array of role/parts objects).
+      # user_prompt only exists on this root span -- propagating it to child spans
+      # (chat, execute_tool) would require cross-span attribute access that OTTL
+      # transform doesn't support.
       - context: span
         conditions:
           - 'span.name == "claude_code.interaction"'
         statements:
           - set(attributes["gen_ai.operation.name"], "invoke_agent")
           - set(span.name, Concat(["invoke_agent ", attributes["gen_ai.agent.name"]], ""))
+          - 'set(attributes["gen_ai.input.messages"], [{"role": "user", "parts": [{"type": "text", "content": attributes["user_prompt"]}]}]) where IsString(attributes["user_prompt"])'
 
       # claude_code.llm_request  ->  chat {model}
       # Also alias the bare-namespace token counts onto the GenAI semconv so the
