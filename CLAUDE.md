@@ -4,6 +4,17 @@
 
 An OpenTelemetry Collector configuration that sits between [Claude Code](https://code.claude.com/docs/en/monitoring-usage) and [Honeycomb](https://www.honeycomb.io), shaping Claude Code's telemetry so it appears in Honeycomb's **Agent Timeline**. Claude Code already emits structured spans for interactions, LLM requests, tool calls, and hooks; the collector adds the three `gen_ai.*` attributes that Agent Timeline requires and rewrites span names to the conventions Honeycomb expects.
 
+## Task tracking — use Linear, not a file
+
+Work on this repo is tracked in the private **jessitron** Linear team (key `JES`),
+in the **claude-collector** project:
+<https://linear.app/honeycombio/project/claude-collector-a55decd260c1>
+
+Use the Linear MCP (`list_issues` / `save_issue` with `project: "claude-collector"`,
+`team: "jessitron"`). `TODO.md` is retired — it's just a pointer now. When jessitron
+mentions something to track, create or update a JES issue rather than writing it to a
+file. This is part of her personal Linear-backed task system (set up 2026-05-28).
+
 ## How to run it
 
 ```bash
