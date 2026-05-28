@@ -15,6 +15,14 @@ Use the Linear MCP (`list_issues` / `save_issue` with `project: "claude-collecto
 mentions something to track, create or update a JES issue rather than writing it to a
 file. This is part of her personal Linear-backed task system (set up 2026-05-28).
 
+**Capturing tasks — use the `create-task` skill.** This project links it at
+`.claude/skills/create-task/` (symlinked from the `my-claude-skills` repo). When you spot
+incidental work mid-task — cleanup, something confusing, a case not covered, a follow-up —
+**fork a general-purpose subagent that runs `create-task`** and keep working; don't derail
+to file the task yourself. For an explicit "track this" from jessitron, run the skill
+directly. The skill searches the current project for related issues and links instead of
+duplicating.
+
 ## How to run it
 
 ```bash
