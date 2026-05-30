@@ -15,13 +15,15 @@ Use the Linear MCP (`list_issues` / `save_issue` with `project: "claude-collecto
 mentions something to track, create or update a JES issue rather than writing it to a
 file. This is part of her personal Linear-backed task system (set up 2026-05-28).
 
-**Capturing tasks — use the `create-task` skill.** This project links it at
-`.claude/skills/create-task/` (symlinked from the `my-claude-skills` repo). When you spot
-incidental work mid-task — cleanup, something confusing, a case not covered, a follow-up —
-**fork a general-purpose subagent that runs `create-task`** and keep working; don't derail
-to file the task yourself. For an explicit "track this" from jessitron, run the skill
-directly. The skill searches the current project for related issues and links instead of
-duplicating.
+**Capturing tasks — `create-task` skill is currently unavailable** (removed
+2026-05-29; pending reinstall via a new plugin — the old `.claude/skills/create-task/`
+symlink and the whole `.claude/skills/` dir are gone). Until it's back, capture tasks by
+using the **Linear MCP directly** (`save_issue` with `project: "claude-collector"`,
+`team: "jessitron"`) — search first (`list_issues`) so you link to a related issue rather
+than duplicating. When you spot incidental work mid-task — cleanup, something confusing, a
+case not covered, a follow-up — **fork a general-purpose subagent to file the Linear issue**
+and keep working; don't derail to do it yourself. Once the plugin is installed, restore the
+fork-a-subagent-that-runs-`create-task` flow here.
 
 ## How to run it
 
