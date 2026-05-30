@@ -16,7 +16,7 @@ export OTEL_TRACES_EXPORTER=otlp
 # Point at the local collector. We use non-standard host ports (4327 gRPC /
 # 4328 HTTP) so the default OTLP ports stay free for other collectors.
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4327
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4327"
 
 # service.name -> Honeycomb dataset name for traces.
 # Commented out so we can see what Claude Code defaults service.name to.
@@ -35,8 +35,9 @@ export OTEL_RESOURCE_ATTRIBUTES="source=claude-code"
 # the requests silently go nowhere and the `parent_of` links look like
 # dead ends. Point it at the HTTP port (4328) instead.
 # Cross-ref: github.com/honeycombio/autobots/blob/main/otelcol/collector.yaml
-export ENABLE_BETA_TRACING_DETAILED=1
-export BETA_TRACING_ENDPOINT=http://localhost:4328
+# Temporarily off so we can see what's lost without it.
+# export ENABLE_BETA_TRACING_DETAILED=1
+# export BETA_TRACING_ENDPOINT="http://localhost:4328"
 
 # ---- Content gates: include prompts, tool I/O, and raw API bodies ----
 # Each of these reveals sensitive content. Comment any of them out for
