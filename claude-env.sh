@@ -45,10 +45,17 @@ export OTEL_RESOURCE_ATTRIBUTES="source=claude-code"
 export OTEL_LOG_USER_PROMPTS=1
 export OTEL_LOG_TOOL_DETAILS=1
 export OTEL_LOG_TOOL_CONTENT=1
+# Assistant response text on `assistant_response` log events. Logs only --
+# does NOT appear on spans. Without this, falls back to OTEL_LOG_USER_PROMPTS.
+export OTEL_LOG_ASSISTANT_RESPONSES=1
 # Logs full Anthropic Messages API request and response as separate log events
 # (`claude_code.api_request_body`, `..._response_body`). Implies all the
 # OTEL_LOG_* gates above. Bodies are truncated at 60 KB.
 export OTEL_LOG_RAW_API_BODIES=1
+
+# Raise the truncation limit for content-bearing attributes (model responses,
+# tool content, system prompts, raw API bodies). Default is 60 KB (61440).
+export CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH=262144
 
 # ---- Metrics cardinality (default values shown; OTEL_METRICS_INCLUDE_VERSION defaults off) ----
 export OTEL_METRICS_INCLUDE_VERSION=true
