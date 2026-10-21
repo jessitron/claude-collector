@@ -21,17 +21,17 @@ processors:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.4")
+          - set(attributes["collector.claude-collector.version"], "0.5")
     metric_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.4")
+          - set(attributes["collector.claude-collector.version"], "0.5")
     log_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.4")
+          - set(attributes["collector.claude-collector.version"], "0.5")
 
   transform/agent_timeline:
     error_mode: ignore
@@ -115,12 +115,26 @@ exporters:
   debug:
     verbosity: normal
 
+  # Raw-trace archive for takeout-telemetry. Writes OTLP JSON in the
+  # year=/month=/day=/hour=/minute=/traces_<id>.json layout that the takeout
+  # packer's "capture" step expects (see notes/takeout-telemetry-supplier.md).
+  # No compression: the packer doesn't read gzip. Credentials come from the
+  # standard AWS env vars (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), which
+  # docker-compose passes through from .env.
+  awss3/takeout:
+    s3uploader:
+      region: ${env:AWS_REGION}
+      s3_bucket: ${env:S3_BUCKET}
+      s3_prefix: ${env:S3_PREFIX}
+      compression: none
+    marshaler: otlp_json
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [transform/mark, transform/agent_timeline, batch]
-      exporters: [otlp/honeycomb]
+      exporters: [otlp/honeycomb, awss3/takeout]
     logs:
       receivers: [otlp]
       processors: [transform/mark, batch]

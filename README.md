@@ -8,7 +8,7 @@ Claude Code can emit OTel telemetry: metrics, log/event records, and (in beta) t
 
 1. Receives that telemetry over OTLP.
 2. Adds and renames attributes so spans match the conventions Honeycomb's Agentic Timeline expects.
-3. Exports to Honeycomb.
+3. Exports to Honeycomb, and archives traces to S3 for [takeout-telemetry](https://github.com/honeycombio/takeout-telemetry) replay shapes (see `notes/takeout-telemetry-supplier.md`).
 
 ## Running the collector
 

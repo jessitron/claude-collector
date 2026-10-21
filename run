@@ -21,9 +21,10 @@ if [[ -z "${HONEYCOMB_API_KEY:-}" ]]; then
 fi
 
 echo "Starting collector..."
-echo "  OTLP gRPC: localhost:4317"
-echo "  OTLP HTTP: localhost:4318"
+echo "  OTLP gRPC: localhost:4327"
+echo "  OTLP HTTP: localhost:4328"
 echo "  Exporting to: ${HONEYCOMB_API_ENDPOINT:-api.honeycomb.io:443}"
+echo "  Archiving traces to: s3://${S3_BUCKET:-devrel-takeout-telemetry-dev-6a8ca705}/${S3_PREFIX:-claude-code}/"
 echo
 
 exec docker compose up

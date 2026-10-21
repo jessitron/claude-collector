@@ -2,7 +2,7 @@
 
 ## What this project does
 
-An OpenTelemetry Collector configuration that sits between [Claude Code](https://code.claude.com/docs/en/monitoring-usage) and [Honeycomb](https://www.honeycomb.io), shaping Claude Code's telemetry so it appears in Honeycomb's **Agent Timeline**. Claude Code already emits structured spans for interactions, LLM requests, tool calls, and hooks; the collector adds the three `gen_ai.*` attributes that Agent Timeline requires and rewrites span names to the conventions Honeycomb expects.
+An OpenTelemetry Collector configuration that sits between [Claude Code](https://code.claude.com/docs/en/monitoring-usage) and [Honeycomb](https://www.honeycomb.io), shaping Claude Code's telemetry so it appears in Honeycomb's **Agent Timeline**. It also archives the shaped traces to S3 so they can become replay shapes ("menu items") in takeout-telemetry; see `notes/takeout-telemetry-supplier.md`. Claude Code already emits structured spans for interactions, LLM requests, tool calls, and hooks; the collector adds the three `gen_ai.*` attributes that Agent Timeline requires and rewrites span names to the conventions Honeycomb expects.
 
 ## Task tracking — use Linear, not a file
 
@@ -30,6 +30,8 @@ fork-a-subagent-that-runs-`create-task` flow here.
 ```bash
 # One-time: copy .env.example to .env and fill in HONEYCOMB_API_KEY
 cp .env.example .env
+# One-time: create the S3 IAM user and write its key into .env
+scripts/create-s3-supplier-user.sh
 
 # Start the collector (sources .env, runs docker compose up)
 ./run
@@ -46,10 +48,12 @@ The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and
 | File                          | Purpose                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------ |
 | `config.yaml`                 | The collector config. Two processors: `transform/mark` and `transform/agent_timeline`. |
-| `docker-compose.yaml`         | One-service compose for `otel/opentelemetry-collector-contrib`. Requires `transform` processor → must be contrib, not core. |
+| `docker-compose.yaml`         | One-service compose for `otel/opentelemetry-collector-contrib`, pinned to a version (keep in sync with `scripts/validate-config.sh`). Requires `transform` + `awss3` → must be contrib, not core. |
 | `run`                         | Sources `.env`, preflight-checks `HONEYCOMB_API_KEY`, `docker compose up`. |
 | `claude-env.sh`               | Sourceable env vars for `claude` — telemetry on, OTLP endpoint pointed at the collector, content gates set. |
-| `.env.example` / `.env`       | `HONEYCOMB_API_KEY` (and optionally `HONEYCOMB_API_ENDPOINT`). `.env` is gitignored. |
+| `.env.example` / `.env`       | `HONEYCOMB_API_KEY` (optionally `HONEYCOMB_API_ENDPOINT`), plus `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`S3_BUCKET`/`S3_PREFIX` for the S3 archive. `.env` is gitignored. |
+| `scripts/create-s3-supplier-user.sh` | Creates IAM user `takeout-telemetry-supplier` in really-devrel-sandbox (PutObject on one bucket prefix only) and writes its key + bucket vars into `.env`. Ignores `$AWS_PROFILE` on purpose. |
+| `scripts/send-test-span.sh`   | POSTs one synthetic span to the collector so you can check exporters (especially S3) without running Claude Code. |
 | `scripts/validate-config.sh`  | Validate `config.yaml` against the same otelcol-contrib image we run, without bringing the receiver up. Catches YAML parse errors and OTTL errors. Run before `docker compose restart` on non-trivial edits — saves a "container failed to start, dig through compose logs" round trip. |
 | `notes/`                      | Working notes, design rationale, attribute-mapping table, open questions. |
 
@@ -57,6 +61,7 @@ The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and
 
 ```
 Claude Code  --OTLP-->  collector (transform/mark → transform/agent_timeline → batch)  --OTLP-->  Honeycomb
+                                                                                      \--awss3-->  s3://devrel-takeout-telemetry-dev-6a8ca705/claude-code/  (traces only)
 ```
 
 * `transform/mark` runs in **all three pipelines** (traces, metrics, logs) and stamps `collector.claude-collector="washere"` and `collector.claude-collector.version="<n>"` on the resource so we can prove data passed through us.
@@ -144,7 +149,9 @@ Full rationale and open questions: `notes/agent-timeline-attribute-mapping.md`.
 4. **`BETA_TRACING_ENDPOINT` is OTLP HTTP, not gRPC.** Claude Code POSTs to `$BETA_TRACING_ENDPOINT/v1/traces` and `/v1/logs` -- HTTP-only paths. Point it at the collector's HTTP port (`4328`), not gRPC (`4327`). If pointed at gRPC, the requests silently disappear and the `parent_of` span link on every `chat` span looks like a dead end (the target trace is in valid OTel format, you just never receive it). Reference: github.com/honeycombio/autobots/blob/main/otelcol/collector.yaml. Open question: does the Detailed Beta receiver also need to authenticate or is plain OTLP enough? Verify once we have data flowing.
 5. **`OTEL_SERVICE_NAME` is commented out in `claude-env.sh`** so we can observe what Claude Code defaults to. Don't set it unless we decide we need to.
 6. **Metrics auto-route in Honeycomb.** The exporter sends no `x-honeycomb-dataset` header for metrics, so Honeycomb chooses. This means metrics land in an auto-named dataset rather than continuing to write to the existing `claude_code_metrics` dataset. If we ever want to keep writing there, add a per-pipeline exporter with the header.
-7. **otelcol-contrib 0.147.0 logs a deprecation:** the `"otlp"` exporter alias should be `"otlp_grpc"`. Non-fatal but worth renaming when we touch the exporter.
+7. **otelcol-contrib logs a deprecation:** the `"otlp"` exporter alias should be `"otlp_grpc"`. Non-fatal but worth renaming when we touch the exporter.
+8. **Only traces are archived to S3.** Logs and metrics still go only to Honeycomb. Add `awss3/takeout` to those pipelines if a takeout shape needs them.
+9. **AWS CLI by hand: always `--profile really-devrel-sandbox`.** jessitron's shell exports `AWS_PROFILE=sandbox`, a different account. See the gotcha in `notes/takeout-telemetry-supplier.md`.
 
 ## Where the spans actually come from in Claude Code
 

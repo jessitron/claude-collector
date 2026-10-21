@@ -1,7 +1,8 @@
 services:
   collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.163.1
     container_name: claude-collector
+    restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./config.yaml:/etc/otelcol-contrib/config.yaml:ro
@@ -13,3 +14,9 @@ services:
     environment:
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY:?HONEYCOMB_API_KEY is required}
       HONEYCOMB_API_ENDPOINT: ${HONEYCOMB_API_ENDPOINT:-api.honeycomb.io:443}
+      # S3 archive for takeout-telemetry (see scripts/create-s3-supplier-user.sh)
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?run scripts/create-s3-supplier-user.sh}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?run scripts/create-s3-supplier-user.sh}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-devrel-takeout-telemetry-dev-6a8ca705}
+      S3_PREFIX: ${S3_PREFIX:-claude-code}
