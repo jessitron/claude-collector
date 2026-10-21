@@ -44,7 +44,7 @@ All applied as `transform` processor statements keyed on `span.name` (which the 
 Unconditional on every span:
 
 - `gen_ai.conversation.id` ← `session.id`
-- `gen_ai.agent.name` ← `"Claude Code"` (default; overridden below for Task sub-agents)
+- `gen_ai.agent.name` ← `"Claude Code"` (default; overridden below for sub-agents)
 
 Per span type:
 
@@ -52,8 +52,8 @@ Per span type:
 |----------------------------------------------|-----------------------------|---------------------------------|-----------------------------------------------------------------------|
 | `claude_code.interaction`                    | `invoke_agent`              | `invoke_agent Claude Code`      |                                                                       |
 | `claude_code.llm_request`                    | `chat`                      | `chat {model}`                  |                                                                       |
-| `claude_code.tool` (Task, `subagent_type` set) | `invoke_agent`            | `invoke_agent {subagent_type}`  | Also sets `gen_ai.agent.name = subagent_type`. Needs `OTEL_LOG_TOOL_DETAILS=1`. |
-| `claude_code.tool` (other)                   | `execute_tool`              | `execute_tool {tool_name}`      | Also copies `tool_name` → `gen_ai.tool.name`.                         |
+| `claude_code.tool` (`subagent_type` set)     | `invoke_agent`              | `invoke_agent {subagent_type}`  | Also sets `gen_ai.agent.name = subagent_type`. Needs `OTEL_LOG_TOOL_DETAILS=1`. Matched on `subagent_type`, not tool name: the tool was `Task`, now `Agent`. |
+| `claude_code.tool` (other)                   | `execute_tool`              | `execute_tool {tool_name}`      | Also copies `tool_name` → `gen_ai.tool.name`. Falls back to `execute_tool unknown` if `tool_name` is absent. Condition is `span.name` only; see JES-158. |
 | `claude_code.tool.execution`                 | *(left as-is)*              | *(left as-is)*                  | Sits inside the timeline node above as nested detail.                 |
 | `claude_code.tool.blocked_on_user`           | *(left as-is)*              | *(left as-is)*                  |                                                                       |
 | `claude_code.hook`                           | *(left as-is)*              | *(left as-is)*                  |                                                                       |
@@ -76,13 +76,13 @@ On `claude_code.tool` (covers both the `execute_tool` and `invoke_agent {subagen
 | `tool_input` | `gen_ai.tool.call.arguments` | `OTEL_LOG_TOOL_DETAILS=1` + `OTEL_LOG_TOOL_CONTENT=1` |
 | `new_context` | `gen_ai.tool.call.result` | same |
 
-`gen_ai.tool.call.id` has no upstream equivalent in Detailed Beta — left absent. Aggregate `gen_ai.usage.*` on the parent `invoke_agent` span is also absent (per-call totals live on the `chat` children only); consumers compose at query time.
+`gen_ai.tool.call.id` is now emitted natively by Claude Code on `claude_code.tool` spans (observed 2026-10-21), along with `gen_ai.operation.name="execute_tool"`, `gen_ai.tool.name` and `gen_ai.provider.name`. Our `execute_tool` rule overwrites the first two with the same values, which is harmless. Aggregate `gen_ai.usage.*` on the parent `invoke_agent` span is also absent (per-call totals live on the `chat` children only); consumers compose at query time.
 
 ## Known v1 limitations
 
 1. **Tool duration includes permission wait.** We use the parent `claude_code.tool` because `tool_name` lives there and not on `claude_code.tool.execution`. That makes the timeline bar wider than the actual execution. Fix would need cross-span attribute propagation.
-2. **Sub-agent's own spans are labeled "Claude Code".** Task spawns a sub-agent whose `claude_code.llm_request` / `claude_code.tool` spans nest under the parent's `claude_code.tool` span. They carry `agent_id` (UUID) but not the friendly `subagent_type`. Same propagation problem.
-3. **Sub-agent attribution requires `OTEL_LOG_TOOL_DETAILS=1`.** Without it, `subagent_type` is absent and Task calls show as `execute_tool Task`.
+2. **Sub-agent's own spans are labeled "Claude Code".** The Agent tool (formerly Task) spawns a sub-agent whose `claude_code.llm_request` / `claude_code.tool` spans nest under the parent's `claude_code.tool` span. They carry `agent_id` (UUID) but not the friendly `subagent_type`. Same propagation problem.
+3. **Sub-agent attribution requires `OTEL_LOG_TOOL_DETAILS=1`.** Without it, `subagent_type` is absent and subagent spawns show as `execute_tool Agent`.
 
 ## Possible v2 directions
 

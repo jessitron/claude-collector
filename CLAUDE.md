@@ -90,6 +90,9 @@ These bit us during the first real run. Don't repeat them.
 2. **The entries in the `conditions:` array are OR-ed, not AND-ed.** At least in 0.147.0. If you need AND, combine them into a single string with the `and` keyword: `conditions: [ 'span.name == "X" and IsString(attributes["y"])' ]`.
 3. **Use `span.name`, not bare `name`, in conditions.** Statements get auto-rewritten by OTTL (you'll see it in the startup log), but conditions don't, and bare `name` can resolve to something other than the span's name.
 
+4. **Don't guard on a `gen_ai.*` attribute being absent -- Claude Code may already set it.** The `execute_tool` rule used to carry `and attributes["gen_ai.operation.name"] == nil` to skip spans the subagent rule had handled. Claude Code started emitting `gen_ai.operation.name="execute_tool"` natively on `claude_code.tool` spans, so the guard was false for *every* span and no tool span got renamed (JES-158, 100% of 183 spans across v0.5/v0.6). Match on `span.name` instead: an earlier rule that renames the span takes it out of later rules' reach, since statements run in order per span.
+5. **Claude Code's tool names drift.** The subagent-spawning tool was `Task`, now `Agent`. Match on the attribute you actually need (`IsString(attributes["subagent_type"])`) rather than on a tool name.
+
 The full pattern these gotchas push you toward:
 
 ```yaml
@@ -128,12 +131,12 @@ The version column tells you which config generation produced each span.
 | ---------------------------------------------------- | -------------------------------- | ----------------------- |
 | `claude_code.interaction`                            | `invoke_agent Claude Code`       | `invoke_agent`          |
 | `claude_code.llm_request`                            | `chat {model}`                   | `chat`                  |
-| `claude_code.tool` (Task, `subagent_type` set)       | `invoke_agent {subagent_type}`   | `invoke_agent`          |
+| `claude_code.tool` (`subagent_type` set; Agent/Task) | `invoke_agent {subagent_type}`   | `invoke_agent`          |
 | `claude_code.tool` (anything else)                   | `execute_tool {tool_name}`       | `execute_tool`          |
 | `claude_code.tool.execution` / `.blocked_on_user`    | *(left as-is; just marked + agent.name=Claude Code)* | *(unset)*  |
 | `claude_code.hook`                                   | *(left as-is; just marked + agent.name=Claude Code)* | *(unset)*  |
 
-Plus, universally: `gen_ai.conversation.id` ← `session.id`, and `gen_ai.agent.name = "Claude Code"` (overridden to `subagent_type` for the Task-subagent rule).
+Plus, universally: `gen_ai.conversation.id` ← `session.id`, and `gen_ai.agent.name = "Claude Code"` (overridden to `subagent_type` for the subagent rule).
 
 Attribute aliases (no rename, just enrichment onto the GenAI semconv):
 
@@ -145,8 +148,8 @@ Full rationale and open questions: `notes/agent-timeline-attribute-mapping.md`.
 ## Known limitations / open questions
 
 1. **Tool-call duration includes the permission wait.** We use the parent `claude_code.tool` span because `tool_name` only lives on the parent, not on `.execution`. To get accurate execution time *plus* the tool name, we'd need cross-span attribute propagation (parent → child), which standard OTTL processors don't do.
-2. **Sub-agent's own nested spans show `gen_ai.agent.name = "Claude Code"`.** When the Task tool spawns a sub-agent, the sub-agent's `claude_code.llm_request` and `claude_code.tool` spans nest under the parent's `claude_code.tool`. They carry `agent_id` (a UUID) but not the friendly `subagent_type` name. Same propagation problem as #1.
-3. **`subagent_type` is gated behind `OTEL_LOG_TOOL_DETAILS=1`.** Without it, Task calls fall through to `execute_tool Task`.
+2. **Sub-agent's own nested spans show `gen_ai.agent.name = "Claude Code"`.** When the Agent tool (formerly Task) spawns a sub-agent, the sub-agent's `claude_code.llm_request` and `claude_code.tool` spans nest under the parent's `claude_code.tool`. They carry `agent_id` (a UUID) but not the friendly `subagent_type` name. Same propagation problem as #1.
+3. **`subagent_type` is gated behind `OTEL_LOG_TOOL_DETAILS=1`.** Without it, subagent spawns fall through to `execute_tool Agent`.
 4. **`BETA_TRACING_ENDPOINT` is OTLP HTTP, not gRPC.** Claude Code POSTs to `$BETA_TRACING_ENDPOINT/v1/traces` and `/v1/logs` -- HTTP-only paths. Point it at the collector's HTTP port (`4328`), not gRPC (`4327`). If pointed at gRPC, the requests silently disappear and the `parent_of` span link on every `chat` span looks like a dead end (the target trace is in valid OTel format, you just never receive it). Reference: github.com/honeycombio/autobots/blob/main/otelcol/collector.yaml. Open question: does the Detailed Beta receiver also need to authenticate or is plain OTLP enough? Verify once we have data flowing.
 5. **`OTEL_SERVICE_NAME` is commented out in `claude-env.sh`** so we can observe what Claude Code defaults to. Don't set it unless we decide we need to.
 6. **Metrics auto-route in Honeycomb.** The exporter sends no `x-honeycomb-dataset` header for metrics, so Honeycomb chooses. This means metrics land in an auto-named dataset rather than continuing to write to the existing `claude_code_metrics` dataset. If we ever want to keep writing there, add a per-pipeline exporter with the header.
@@ -159,7 +162,7 @@ Useful when debugging which env var to flip:
 
 * **`claude_code.interaction`** — emitted per user turn. Root of the trace.
 * **`claude_code.llm_request`** — every API call to Anthropic, including retries. Carries `gen_ai.request.model`, `input_tokens`, `output_tokens`, `agent_id` (for subagents).
-* **`claude_code.tool`** — parent span around a tool call. Has `tool_name`, and (with `OTEL_LOG_TOOL_DETAILS=1`) `subagent_type` for Task and `skill_name` for Skill.
+* **`claude_code.tool`** — parent span around a tool call. Has `tool_name`, and (with `OTEL_LOG_TOOL_DETAILS=1`) `subagent_type` for Agent (the tool formerly called Task) and `skill_name` for Skill. As of 2026-10-21 Claude Code also natively sets `gen_ai.operation.name="execute_tool"`, `gen_ai.tool.name`, `gen_ai.tool.call.id` and `gen_ai.provider.name` here.
 * **`claude_code.tool.execution`** — the actual run of the tool. Has `duration_ms`, `success`, `error`.
 * **`claude_code.tool.blocked_on_user`** — the time waiting for the permission prompt.
 * **`claude_code.hook`** — only emitted with `ENABLE_BETA_TRACING_DETAILED=1` *and* org allowlisting.

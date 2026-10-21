@@ -76,11 +76,14 @@ aws s3 ls --recursive s3://devrel-takeout-telemetry-dev-6a8ca705/claude-code/ --
 A 403 in `docker compose logs` from `awss3/takeout` means credentials or policy;
 the exporter retries with backoff and queues, so Honeycomb export is unaffected.
 
-## Observed while testing
+## Observed while testing (resolved: JES-158)
 
-Some `claude_code.tool` spans arrive in S3 **un-renamed** (still `claude_code.tool`,
-no `execute_tool` prefix), alongside correctly renamed `chat {model}` spans. The
-`execute_tool` rule's condition uses `attributes["gen_ai.operation.name"] == nil`,
-which is the same shape as OTTL gotcha #1 in CLAUDE.md (`!= nil` doesn't behave on
-missing attributes). Or `tool_name` is missing on those spans. Not investigated yet;
-tracked in Linear.
+Through collector v0.6, *every* `claude_code.tool` span arrived in S3 un-renamed
+(still `claude_code.tool`), alongside correctly renamed `chat {model}` spans. Root
+cause was neither OTTL `== nil` misbehaving nor a missing `tool_name`: Claude Code
+had started emitting `gen_ai.operation.name="execute_tool"` natively on tool spans,
+so the rule's "not already handled" guard was false for all of them. Fixed in v0.7 by
+matching on `span.name` alone (see OTTL gotcha #4 in CLAUDE.md). The S3 archive was
+what made this easy to see; the scan script approach is: load each `traces_*.json`,
+walk `resourceSpans[].scopeSpans[].spans[]`, and group by span name and
+`resource.collector.claude-collector.version`.

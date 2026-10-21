@@ -62,7 +62,7 @@ export OTEL_LOG_TOOL_DETAILS=1
 export OTEL_LOG_TOOL_CONTENT=1
 ```
 
-`OTEL_LOG_TOOL_DETAILS=1` is also what makes `subagent_type` available on Task-tool spans, which is what the collector uses to label sub-agent invocations in the timeline.
+`OTEL_LOG_TOOL_DETAILS=1` is also what makes `subagent_type` available on Agent-tool spans (the subagent-spawning tool, formerly called Task), which is what the collector uses to label sub-agent invocations in the timeline.
 
 ### What you'll see
 
@@ -87,15 +87,15 @@ The collector applies these transforms to traces (see `config.yaml`):
 | -------------------------- | ----------------------------- | ----------------------- |
 | `claude_code.interaction`  | `invoke_agent Claude Code`    | `invoke_agent`          |
 | `claude_code.llm_request`  | `chat {model}`                | `chat`                  |
-| `claude_code.tool` (Task w/ subagent) | `invoke_agent {subagent_type}` | `invoke_agent`   |
+| `claude_code.tool` (w/ `subagent_type`) | `invoke_agent {subagent_type}` | `invoke_agent` |
 | `claude_code.tool` (other) | `execute_tool {tool_name}`    | `execute_tool`          |
 
-Every span also gets `gen_ai.conversation.id` (copied from `session.id`) and `gen_ai.agent.name` (defaults to `"Claude Code"`, overridden to `subagent_type` for Task-tool invocations).
+Every span also gets `gen_ai.conversation.id` (copied from `session.id`) and `gen_ai.agent.name` (defaults to `"Claude Code"`, overridden to `subagent_type` for subagent invocations).
 
 ### Known limitations
 
 - The timeline span for a tool call is the parent `claude_code.tool`, whose duration includes the time spent waiting for permission. The more accurate `claude_code.tool.execution` child doesn't carry `tool_name`, so we can't easily synthesize `execute_tool {tool_name}` on it without cross-span propagation.
-- A sub-agent's own nested spans (the `claude_code.llm_request` / `claude_code.tool` spans inside a Task call) inherit the default `gen_ai.agent.name = "Claude Code"` instead of the sub-agent's name, for the same reason.
+- A sub-agent's own nested spans (the `claude_code.llm_request` / `claude_code.tool` spans inside an Agent call) inherit the default `gen_ai.agent.name = "Claude Code"` instead of the sub-agent's name, for the same reason.
 
 ### Gotcha: `BETA_TRACING_ENDPOINT` is HTTP, not gRPC
 

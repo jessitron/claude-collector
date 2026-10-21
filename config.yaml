@@ -21,17 +21,17 @@ processors:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.6")
+          - set(attributes["collector.claude-collector.version"], "0.7")
     metric_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.6")
+          - set(attributes["collector.claude-collector.version"], "0.7")
     log_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.6")
+          - set(attributes["collector.claude-collector.version"], "0.7")
 
   transform/agent_timeline:
     error_mode: ignore
@@ -83,13 +83,16 @@ processors:
           - set(attributes["gen_ai.tool.call.arguments"], attributes["tool_input"]) where IsString(attributes["tool_input"])
           - set(attributes["gen_ai.tool.call.result"], attributes["new_context"]) where IsString(attributes["new_context"])
 
-      # Task tool with a known subagent  ->  invoke_agent {subagent_type}
+      # Subagent spawn  ->  invoke_agent {subagent_type}
+      # Matched on subagent_type alone, not on tool_name: the spawning tool was
+      # called "Task" and is now called "Agent" (observed 2026-10-21), and only
+      # the agent-spawning tool carries subagent_type anyway.
       # (subagent_type requires OTEL_LOG_TOOL_DETAILS=1 in Claude Code)
       # Conditions joined with explicit `and` because this OTTL build appears
       # to OR the entries in the conditions array.
       - context: span
         conditions:
-          - 'span.name == "claude_code.tool" and attributes["tool_name"] == "Task" and IsString(attributes["subagent_type"])'
+          - 'span.name == "claude_code.tool" and IsString(attributes["subagent_type"])'
         statements:
           - set(attributes["gen_ai.agent.name"], attributes["subagent_type"])
           - set(attributes["gen_ai.operation.name"], "invoke_agent")
@@ -98,13 +101,18 @@ processors:
       # All other claude_code.tool spans  ->  execute_tool {tool_name}
       # Duration here includes the permission-wait child; tool_name lives only on
       # the parent .tool span, so we use it instead of claude_code.tool.execution.
+      # The span.name check alone excludes spans the rule above already renamed.
+      # Do NOT guard on gen_ai.operation.name being absent: Claude Code now emits
+      # gen_ai.operation.name="execute_tool" itself, so that guard skipped every
+      # span and nothing got renamed (JES-158).
       - context: span
         conditions:
-          - 'span.name == "claude_code.tool" and attributes["gen_ai.operation.name"] == nil'
+          - 'span.name == "claude_code.tool"'
         statements:
           - set(attributes["gen_ai.operation.name"], "execute_tool")
           - set(attributes["gen_ai.tool.name"], attributes["tool_name"]) where IsString(attributes["tool_name"])
           - set(span.name, Concat(["execute_tool ", attributes["tool_name"]], "")) where IsString(attributes["tool_name"])
+          - set(span.name, "execute_tool unknown") where not IsString(attributes["tool_name"])
 
 exporters:
   otlp/honeycomb:
