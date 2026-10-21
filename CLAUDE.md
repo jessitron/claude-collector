@@ -54,6 +54,7 @@ The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and
 | `.env.example` / `.env`       | `HONEYCOMB_API_KEY` (optionally `HONEYCOMB_API_ENDPOINT`), plus `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`S3_BUCKET`/`S3_PREFIX` for the S3 archive. `.env` is gitignored. |
 | `scripts/create-s3-supplier-user.sh` | Creates IAM user `takeout-telemetry-supplier` in really-devrel-sandbox (PutObject on one bucket prefix only) and writes its key + bucket vars into `.env`. Ignores `$AWS_PROFILE` on purpose. |
 | `scripts/send-test-span.sh` / `send-test-metric.sh` | POST one synthetic span / gauge point to the collector so you can check exporters (especially S3) without running Claude Code. |
+| `scripts/find-unrenamed-tool-spans.py` | Scan downloaded S3 `traces_*.json` objects for spans still named `claude_code.tool`, grouped by config version, listing which attributes they carry. Fetch objects with `aws s3 cp --recursive s3://<bucket>/claude-code/ <dir> --profile really-devrel-sandbox`, then `python3 -I scripts/find-unrenamed-tool-spans.py <dir>`. Diagnosed JES-158. |
 | `scripts/validate-config.sh`  | Validate `config.yaml` against the same otelcol-contrib image we run, without bringing the receiver up. Catches YAML parse errors and OTTL errors. Run before `docker compose restart` on non-trivial edits — saves a "container failed to start, dig through compose logs" round trip. |
 | `notes/`                      | Working notes, design rationale, attribute-mapping table, open questions. |
 
