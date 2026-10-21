@@ -87,8 +87,8 @@ Jessitron uses multiple computers. Notes live in `notes/` so they sync via git. 
 
 These bit us during the first real run. Don't repeat them.
 
-1. **`attributes["x"] != nil` quietly passes for missing attributes.** This OTTL build (otelcol-contrib 0.147.0) treats access to a missing attribute as something other than `nil` for the purpose of `!=` comparison. Use `IsString(attributes["x"])` (or another `IsXxx` for non-string types) as the presence check instead.
-2. **The entries in the `conditions:` array are OR-ed, not AND-ed.** At least in 0.147.0. If you need AND, combine them into a single string with the `and` keyword: `conditions: [ 'span.name == "X" and IsString(attributes["y"])' ]`.
+1. **`attributes["x"] != nil` quietly passes for missing attributes.** This OTTL build (observed on otelcol-contrib 0.147.0; we now run 0.163.1 and haven't re-tested) treats access to a missing attribute as something other than `nil` for the purpose of `!=` comparison. Use `IsString(attributes["x"])` (or another `IsXxx` for non-string types) as the presence check instead.
+2. **The entries in the `conditions:` array are OR-ed, not AND-ed.** At least in 0.147.0 (not re-tested on 0.163.1). If you need AND, combine them into a single string with the `and` keyword: `conditions: [ 'span.name == "X" and IsString(attributes["y"])' ]`.
 3. **Use `span.name`, not bare `name`, in conditions.** Statements get auto-rewritten by OTTL (you'll see it in the startup log), but conditions don't, and bare `name` can resolve to something other than the span's name.
 
 4. **Don't guard on a `gen_ai.*` attribute being absent -- Claude Code may already set it.** The `execute_tool` rule used to carry `and attributes["gen_ai.operation.name"] == nil` to skip spans the subagent rule had handled. Claude Code started emitting `gen_ai.operation.name="execute_tool"` natively on `claude_code.tool` spans, so the guard was false for *every* span and no tool span got renamed (JES-158, 100% of 183 spans across v0.5/v0.6). Match on `span.name` instead: an earlier rule that renames the span takes it out of later rules' reach, since statements run in order per span.

@@ -8,24 +8,24 @@ Claude Code can emit OTel telemetry: metrics, log/event records, and (in beta) t
 
 1. Receives that telemetry over OTLP.
 2. Adds and renames attributes so spans match the conventions Honeycomb's Agentic Timeline expects.
-3. Exports to Honeycomb, and archives traces to S3 for [takeout-telemetry](https://github.com/honeycombio/takeout-telemetry) replay shapes (see `notes/takeout-telemetry-supplier.md`).
+3. Exports to Honeycomb, and archives traces, logs, and metrics to S3 for [takeout-telemetry](https://github.com/honeycombio/takeout-telemetry) replay shapes (see `notes/takeout-telemetry-supplier.md`).
 
 ## Running the collector
 
 ```bash
-export HONEYCOMB_API_KEY=<your key for the destination environment>
-# US ingest is the default; set to api.eu1.honeycomb.io:443 if you're on EU.
-# export HONEYCOMB_API_ENDPOINT=api.honeycomb.io:443
-
-docker compose up
+cp .env.example .env            # then fill in HONEYCOMB_API_KEY
+scripts/create-s3-supplier-user.sh   # one-time: IAM user for the S3 archive, writes its key into .env
+./run                           # sources .env, docker compose up
 ```
+
+`HONEYCOMB_API_ENDPOINT` defaults to US ingest; set it to `api.eu1.honeycomb.io:443` in `.env` if you're on EU. The S3 variables are required by `docker-compose.yaml`; if you don't want the archive, remove `awss3/takeout` from the pipelines in `config.yaml` and the `AWS_*`/`S3_*` lines from compose.
 
 The collector listens on non-standard host ports (the OTLP defaults of 4317/4318 are left free for other collectors on your machine):
 
 - gRPC: `localhost:4327`
 - HTTP: `localhost:4328`
 
-If you'd rather run the binary directly, install [`otelcol-contrib`](https://github.com/open-telemetry/opentelemetry-collector-releases) (the `transform` processor is in contrib, not core) and run `otelcol-contrib --config config.yaml` with the same env vars set.
+If you'd rather run the binary directly, install [`otelcol-contrib`](https://github.com/open-telemetry/opentelemetry-collector-releases) (the `transform` processor and `awss3` exporter are in contrib, not core) and run `otelcol-contrib --config config.yaml` with the same env vars set.
 
 ## Pointing Claude Code at the collector
 
@@ -100,5 +100,9 @@ Every span also gets `gen_ai.conversation.id` (copied from `session.id`) and `ge
 ### Gotcha: `BETA_TRACING_ENDPOINT` is HTTP, not gRPC
 
 Claude Code's `ENABLE_BETA_TRACING_DETAILED=1` exports through a separate `BETA_TRACING_ENDPOINT`, and it POSTs to `$BETA_TRACING_ENDPOINT/v1/traces` and `/v1/logs` — i.e. OTLP **HTTP** paths. Point it at the HTTP receiver port (`4328`), not the gRPC one (`4327`); otherwise the requests vanish into a gRPC listener and the `parent_of` span links you see on `chat` spans look like dead ends.
+
+## Testing without Claude Code
+
+`scripts/send-test-span.sh` and `scripts/send-test-metric.sh` POST one synthetic span / metric to the collector. `scripts/validate-config.sh` checks `config.yaml` against the pinned collector image before you restart.
 
 See `notes/` for the full mapping rationale and a list of open questions.
