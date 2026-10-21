@@ -18,7 +18,7 @@ Then, in the takeout repo (`docs/ADMIN-GUIDE.md`, "Shape data: capture → pack 
 ```bash
 cd ~/code/honeycombio/takeout-telemetry/src/packer
 AWS_PROFILE=really-devrel-sandbox python -m packer pack \
-  --source s3://devrel-takeout-telemetry-dev-6a8ca705/claude-code --workdir <dir> --signals traces
+  --source s3://devrel-takeout-telemetry-dev-6a8ca705/claude-code --workdir <dir> --signals traces,logs,metrics
 # edit <dir>/shapes.yaml, fill TODOs, then:
 python -m packer upload --workdir <dir> --dest s3://<bucket>/shapes/<dir>
 ```
@@ -33,9 +33,9 @@ the Agent-Timeline names (`chat {model}`, `execute_tool X`) and the version mark
 That's intentional: a replayed shape should look right in Honeycomb without
 needing this collector again.
 
-Only traces go to S3 for now. Adding `awss3/takeout` to the logs/metrics
-pipelines is a one-line change each if a shape wants them (`packer pack
---signals traces,logs,metrics`).
+All three signals go to S3 (traces since version 0.5, logs and metrics since 0.6),
+so `packer pack --signals traces,logs,metrics` works. Objects are named
+`traces_*.json`, `logs_*.json`, `metrics_*.json` within the same minute partitions.
 
 ## AWS access
 

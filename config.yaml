@@ -21,17 +21,17 @@ processors:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.5")
+          - set(attributes["collector.claude-collector.version"], "0.6")
     metric_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.5")
+          - set(attributes["collector.claude-collector.version"], "0.6")
     log_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.5")
+          - set(attributes["collector.claude-collector.version"], "0.6")
 
   transform/agent_timeline:
     error_mode: ignore
@@ -115,8 +115,8 @@ exporters:
   debug:
     verbosity: normal
 
-  # Raw-trace archive for takeout-telemetry. Writes OTLP JSON in the
-  # year=/month=/day=/hour=/minute=/traces_<id>.json layout that the takeout
+  # Raw telemetry archive for takeout-telemetry (all three signals). Writes
+  # OTLP JSON in the year=/month=/day=/hour=/minute=/<signal>_<id>.json layout that the takeout
   # packer's "capture" step expects (see notes/takeout-telemetry-supplier.md).
   # No compression: the packer doesn't read gzip. Credentials come from the
   # standard AWS env vars (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), which
@@ -138,8 +138,8 @@ service:
     logs:
       receivers: [otlp]
       processors: [transform/mark, batch]
-      exporters: [otlp/honeycomb]
+      exporters: [otlp/honeycomb, awss3/takeout]
     metrics:
       receivers: [otlp]
       processors: [transform/mark, batch]
-      exporters: [otlp/honeycomb]
+      exporters: [otlp/honeycomb, awss3/takeout]

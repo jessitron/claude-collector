@@ -61,10 +61,11 @@ The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and
 
 ```
 Claude Code  --OTLP-->  collector (transform/mark → transform/agent_timeline → batch)  --OTLP-->  Honeycomb
-                                                                                      \--awss3-->  s3://devrel-takeout-telemetry-dev-6a8ca705/claude-code/  (traces only)
+                                                                                      \--awss3-->  s3://devrel-takeout-telemetry-dev-6a8ca705/claude-code/  (traces, logs, metrics)
 ```
 
 * `transform/mark` runs in **all three pipelines** (traces, metrics, logs) and stamps `collector.claude-collector="washere"` and `collector.claude-collector.version="<n>"` on the resource so we can prove data passed through us.
+* `awss3/takeout` runs in **all three pipelines** too, so a takeout shape can include logs and metrics (`packer pack --signals traces,logs,metrics`).
 * `transform/agent_timeline` runs **only on traces**. It does the Agent-Timeline-shaped rewrites of span name and `gen_ai.*` attributes.
 
 ## Conventions to keep
@@ -150,8 +151,7 @@ Full rationale and open questions: `notes/agent-timeline-attribute-mapping.md`.
 5. **`OTEL_SERVICE_NAME` is commented out in `claude-env.sh`** so we can observe what Claude Code defaults to. Don't set it unless we decide we need to.
 6. **Metrics auto-route in Honeycomb.** The exporter sends no `x-honeycomb-dataset` header for metrics, so Honeycomb chooses. This means metrics land in an auto-named dataset rather than continuing to write to the existing `claude_code_metrics` dataset. If we ever want to keep writing there, add a per-pipeline exporter with the header.
 7. **otelcol-contrib logs a deprecation:** the `"otlp"` exporter alias should be `"otlp_grpc"`. Non-fatal but worth renaming when we touch the exporter.
-8. **Only traces are archived to S3.** Logs and metrics still go only to Honeycomb. Add `awss3/takeout` to those pipelines if a takeout shape needs them.
-9. **AWS CLI by hand: always `--profile really-devrel-sandbox`.** jessitron's shell exports `AWS_PROFILE=sandbox`, a different account. See the gotcha in `notes/takeout-telemetry-supplier.md`.
+8. **AWS CLI by hand: always `--profile really-devrel-sandbox`.** jessitron's shell exports `AWS_PROFILE=sandbox`, a different account. See the gotcha in `notes/takeout-telemetry-supplier.md`.
 
 ## Where the spans actually come from in Claude Code
 
