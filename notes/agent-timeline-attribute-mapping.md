@@ -47,7 +47,7 @@ Seen with `scripts/dump-raw-spans.sh`, before any transform:
 - `claude_code.tool`: `gen_ai.operation.name = execute_tool` (even for the Agent tool), `gen_ai.tool.name`, `gen_ai.tool.call.id`. Tool output arrives as a `tool.output` **span event**, not an attribute.
 - Nowhere: `gen_ai.agent.name`, semconv span names.
 
-## Collector transformations (v0.8, see `config.yaml`)
+## Collector transformations (v0.10, see `config.yaml`)
 
 All applied as `transform` processor statements keyed on `span.name` (which the doc says always equals `span.type`).
 
@@ -60,7 +60,7 @@ Per span type:
 | Source                                       | Set `gen_ai.operation.name` | Rewrite span name to            | Notes                                                                 |
 |----------------------------------------------|-----------------------------|---------------------------------|-----------------------------------------------------------------------|
 | `claude_code.interaction`                    | *(native)*                  | `invoke_agent Claude Code`      | Wraps `user_prompt` into `gen_ai.input.messages`.                     |
-| `claude_code.llm_request`                    | `chat`                      | `chat {model}`                  | If `query_source_safe` is `agent.builtin.<type>`, `gen_ai.agent.name = <type>`; if `agent.custom`, `"custom agent"`. |
+| `claude_code.llm_request`                    | `chat`                      | `chat {model}`                  | If `query_source_safe` is `agent.builtin.<type>`, `gen_ai.agent.name = <type>`; if `agent.custom`, `"custom agent"`. Span links dropped (v0.10): the only one is a dead `parent_of` link to an Anthropic-internal trace. |
 | `claude_code.tool` (`subagent_type` set)     | `invoke_agent` (overrides native `execute_tool`) | `invoke_agent {subagent_type}`  | Also sets `gen_ai.agent.name = subagent_type`. Needs `OTEL_LOG_TOOL_DETAILS=1`. Matched on `subagent_type`, not tool name: the tool was `Task`, now `Agent`. |
 | `claude_code.tool` (other)                   | *(native)*                  | `execute_tool {tool_name}`      | Falls back to `execute_tool unknown` if `tool_name` is absent. Condition is `span.name` only; see JES-158. |
 | `claude_code.tool.execution`                 | *(left as-is)*              | *(left as-is)*                  | Sits inside the timeline node above as nested detail.                 |

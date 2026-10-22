@@ -101,7 +101,7 @@ Every span also gets `gen_ai.agent.name`: `"Claude Code"` by default, `subagent_
 
 Claude Code's `ENABLE_BETA_TRACING_DETAILED=1` exports through a separate `BETA_TRACING_ENDPOINT`, and it POSTs to `$BETA_TRACING_ENDPOINT/v1/traces` and `/v1/logs` — i.e. OTLP **HTTP** paths. Point it at the HTTP receiver port (`4328`), not the gRPC one (`4327`); otherwise the requests vanish into a gRPC listener.
 
-(The `parent_of` span link on every `chat` span is unrelated: it records the Anthropic API's `traceresponse` header and points at an Anthropic-internal trace that is never exported, so it's always a dead link. Anthropic's server-side spans, where its telemetry export is set up, show up instead as children of the `chat` span in the same trace. That only happens for API-key sessions, not claude.ai logins.)
+(The `parent_of` span link on every `chat` span is unrelated: it records the Anthropic API's `traceresponse` header and points at an Anthropic-internal trace that is never exported, so it's always a dead link. The collector drops it. Anthropic's server-side spans, where its telemetry export is set up, show up instead as children of the `chat` span in the same trace. That only happens for API-key sessions, not claude.ai logins.)
 
 ## Testing without Claude Code
 

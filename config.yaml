@@ -21,17 +21,17 @@ processors:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.8")
+          - set(attributes["collector.claude-collector.version"], "0.10")
     metric_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.8")
+          - set(attributes["collector.claude-collector.version"], "0.10")
     log_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.8")
+          - set(attributes["collector.claude-collector.version"], "0.10")
 
   # Claude Code (checked on 2.1.308 with scripts/dump-raw-spans.sh) already sets
   # gen_ai.conversation.id and gen_ai.provider.name on every span,
@@ -81,10 +81,15 @@ processors:
       # input_tokens doesn't (it's often 2), so we add them up. The cache counts go
       # out under both the current semconv names (dotted) and the underscore names
       # from Honeycomb's older Claude Code example, until we know which the UI reads.
+      # The only span link here is "parent_of", from the API's traceresponse header.
+      # It points at an Anthropic-internal trace that is never exported, so in
+      # Honeycomb it's always a dead link. Drop it. (OTTL can't pick out one link,
+      # only replace the whole list.)
       - context: span
         conditions:
           - 'span.name == "claude_code.llm_request"'
         statements:
+          - set(span.links, nil)
           - set(attributes["gen_ai.operation.name"], "chat")
           - set(span.name, Concat(["chat ", attributes["model"]], "")) where IsString(attributes["model"])
           - set(attributes["gen_ai.usage.input_tokens"], attributes["input_tokens"]) where IsInt(attributes["input_tokens"])
