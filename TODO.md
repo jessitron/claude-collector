@@ -12,4 +12,11 @@ to that. Open Linear issues were not migrated.)
       They carry `agent_id` but nothing that names the agent. Options: a generic
       "subagent" label when `agent_id` is set, or cross-span propagation from the
       subagent's `chat` spans (same agent_id). See notes/agent-timeline-attribute-mapping.md.
+- [ ] A subagent's spans hang under the Agent tool's `claude_code.tool.execution` child,
+      not under `invoke_agent {type}` directly. Check whether Agent Timeline shows them
+      under the subagent; if not, decide what to do (we can't reparent without cross-span info).
+- [ ] The `parent_of` link on every `chat` span is always dead (Anthropic-internal trace).
+      Drop it in the collector, if OTTL can reach links?
+- [ ] Anthropic's server-side spans (`claude-api` dataset) only join traces for API-key
+      sessions, not claude.ai logins. Ask Anthropic whether that's expected.
 - [ ] Rename the `otlp` exporter to `otlp_grpc` (deprecation warning at startup).
