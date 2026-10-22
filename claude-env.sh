@@ -49,9 +49,12 @@ unset _git_common_dir _git_origin
 # the requests silently go nowhere and the `parent_of` links look like
 # dead ends. Point it at the HTTP port (4328) instead.
 # Cross-ref: github.com/honeycombio/autobots/blob/main/otelcol/collector.yaml
-# Temporarily off so we can see what's lost without it.
-# export ENABLE_BETA_TRACING_DETAILED=1
-# export BETA_TRACING_ENDPOINT="http://localhost:4328"
+# This is the only way to get message content on `chat` spans: new_context,
+# response.model_output, system_prompt_preview, system_reminders (gated by
+# OTEL_LOG_USER_PROMPTS). Confirmed on `claude -p` 2.1.308. Interactive
+# sessions also need the org allowlisted by Anthropic.
+export ENABLE_BETA_TRACING_DETAILED=1
+export BETA_TRACING_ENDPOINT="http://localhost:4328"
 
 # ---- Content gates: include prompts, tool I/O, and raw API bodies ----
 # Each of these reveals sensitive content. Comment any of them out for

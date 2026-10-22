@@ -18,8 +18,9 @@ to that. Open Linear issues were not migrated.)
 - [ ] Anthropic's server-side spans (`claude-api` dataset) only join traces for API-key
       sessions, not claude.ai logins. Ask Anthropic whether that's expected.
 - [ ] Rename the `otlp` exporter to `otlp_grpc` (deprecation warning at startup).
-- [ ] Put messages on `chat` spans. Claude Code only does it under detailed beta tracing
-      (`ENABLE_BETA_TRACING_DETAILED=1` + `BETA_TRACING_ENDPOINT`, off in claude-env.sh):
-      `new_context`, `response.model_output`, `system_prompt_preview` on `claude_code.llm_request`.
-      Then map those to `gen_ai.input.messages` / `gen_ai.output.messages`. Interactive
-      sessions also need org allowlisting; `claude -p` doesn't. (Checked docs 2026-10-22.)
+- [ ] Messages on `chat` spans: detailed beta tracing (on again in claude-env.sh) puts
+      `new_context` (plain text, `[TOOL RESULT: id]` markers), `response.model_output`,
+      `system_prompt_preview`, `system_reminders` on `claude_code.llm_request` -- confirmed
+      for `claude -p` on 2.1.308. Still to do: (1) check an interactive session gets them
+      (needs org allowlisting); (2) map to `gen_ai.input.messages` / `gen_ai.output.messages`
+      so Agent Timeline shows them.
