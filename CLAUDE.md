@@ -37,7 +37,7 @@ The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and
 | `config.yaml`                 | The collector config. Two processors: `transform/mark` and `transform/agent_timeline`. |
 | `docker-compose.yaml`         | One-service compose for `otel/opentelemetry-collector-contrib`, pinned to a version (keep in sync with `scripts/validate-config.sh`). Requires `transform` + `awss3` → must be contrib, not core. |
 | `run`                         | Sources `.env`, preflight-checks `HONEYCOMB_API_KEY`, `docker compose up`. |
-| `claude-env.sh`               | Sourceable env vars for `claude` — telemetry on, OTLP endpoint pointed at the collector, content gates set. |
+| `claude-env.sh`               | Sourceable env vars for `claude` — telemetry on, OTLP endpoint pointed at the collector, content gates set. Adds `vcs.repository.name` / `vcs.repository.url.full` resource attributes from the launch directory's git repo. |
 | `.env.example` / `.env`       | `HONEYCOMB_API_KEY` (optionally `HONEYCOMB_API_ENDPOINT`), plus `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`S3_BUCKET`/`S3_PREFIX` for the S3 archive. `.env` is gitignored. |
 | `scripts/create-s3-supplier-user.sh` | Creates IAM user `takeout-telemetry-supplier` in really-devrel-sandbox (PutObject on one bucket prefix only) and writes its key + bucket vars into `.env`. Ignores `$AWS_PROFILE` on purpose. |
 | `scripts/send-test-span.sh` / `send-test-metric.sh` | POST one synthetic span / gauge point to the collector so you can check exporters (especially S3) without running Claude Code. |

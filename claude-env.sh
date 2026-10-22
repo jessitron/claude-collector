@@ -25,6 +25,20 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4327"
 # Custom resource attributes. Add anything you want to tag every span with.
 export OTEL_RESOURCE_ATTRIBUTES="source=claude-code"
 
+# Tag every span with the git repo claude was launched in (OTel VCS semconv).
+# Resolved once at launch, so a later `cd` or branch switch won't show up.
+# --git-common-dir points at the main checkout's .git, so a worktree reports
+# its parent repo's name rather than the worktree directory's.
+if _git_common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+  OTEL_RESOURCE_ATTRIBUTES="${OTEL_RESOURCE_ATTRIBUTES},vcs.repository.name=$(basename "$(dirname "$_git_common_dir")")"
+  # Strip any user:token@ from the URL before it goes into telemetry.
+  if _git_origin=$(git remote get-url origin 2>/dev/null); then
+    OTEL_RESOURCE_ATTRIBUTES="${OTEL_RESOURCE_ATTRIBUTES},vcs.repository.url.full=$(printf '%s' "$_git_origin" | sed -E 's#://[^@/]+@#://#')"
+  fi
+  export OTEL_RESOURCE_ATTRIBUTES
+fi
+unset _git_common_dir _git_origin
+
 # ---- Detailed beta tracing (richer per-LLM-call trace + logs) ----
 # Each `chat` span gets a span link of link.type=parent_of pointing at a
 # detailed sub-trace exported through this knob.
