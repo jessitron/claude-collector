@@ -21,26 +21,46 @@ processors:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.7")
+          - set(attributes["collector.claude-collector.version"], "0.8")
     metric_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.7")
+          - set(attributes["collector.claude-collector.version"], "0.8")
     log_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.7")
+          - set(attributes["collector.claude-collector.version"], "0.8")
 
+  # Claude Code (checked on 2.1.308 with scripts/dump-raw-spans.sh) already sets
+  # gen_ai.conversation.id and gen_ai.provider.name on every span,
+  # gen_ai.operation.name on interaction and tool spans, and gen_ai.tool.name /
+  # gen_ai.tool.call.id on tool spans. We don't repeat those. What's left: span
+  # names, gen_ai.agent.name, the chat operation, token usage, and tool I/O.
   transform/agent_timeline:
     error_mode: ignore
     trace_statements:
-      # Universal: every span gets a conversation id and an agent name.
+      # Universal default agent name; subagent rules below override it.
       - context: span
         statements:
-          - set(attributes["gen_ai.conversation.id"], attributes["session.id"]) where IsString(attributes["session.id"])
           - set(attributes["gen_ai.agent.name"], "Claude Code")
+
+      # A subagent's own chat spans: query_source_safe is "agent.builtin.<type>"
+      # (e.g. general-purpose, Explore) or "agent.custom" for user-defined agents,
+      # whose real name is redacted unless detailed beta tracing is on. Tool spans
+      # inside a subagent don't carry query_source_safe, so they keep "Claude Code".
+      - context: span
+        conditions:
+          - 'span.name == "claude_code.llm_request" and IsString(attributes["query_source_safe"]) and IsMatch(attributes["query_source_safe"], "^agent\\.builtin\\.")'
+        statements:
+          - set(attributes["gen_ai.agent.name"], attributes["query_source_safe"])
+          - replace_pattern(attributes["gen_ai.agent.name"], "^agent\\.builtin\\.", "")
+      - context: span
+        conditions:
+          - 'span.name == "claude_code.llm_request" and attributes["query_source_safe"] == "agent.custom"'
+        statements:
+          - set(attributes["gen_ai.agent.name"], "custom agent")
 
       # claude_code.interaction  ->  invoke_agent Claude Code
       # Also wrap user_prompt into the gen_ai.input.messages JSON shape Honeycomb's
@@ -52,14 +72,15 @@ processors:
         conditions:
           - 'span.name == "claude_code.interaction"'
         statements:
-          - set(attributes["gen_ai.operation.name"], "invoke_agent")
           - set(span.name, Concat(["invoke_agent ", attributes["gen_ai.agent.name"]], ""))
           - 'set(attributes["gen_ai.input.messages"], [{"role": "user", "parts": [{"type": "text", "content": attributes["user_prompt"]}]}]) where IsString(attributes["user_prompt"])'
 
       # claude_code.llm_request  ->  chat {model}
-      # Also alias the bare-namespace token counts onto the GenAI semconv so the
-      # Agent Timeline tokens view picks them up. Claude Code's Detailed Beta puts
-      # some tokens under gen_ai.* and some under bare keys; this fills the gap.
+      # Token usage onto the GenAI semconv (Claude Code sets no gen_ai.usage.*).
+      # Semconv's input_tokens includes cache reads and writes; Claude Code's bare
+      # input_tokens doesn't (it's often 2), so we add them up. The cache counts go
+      # out under both the current semconv names (dotted) and the underscore names
+      # from Honeycomb's older Claude Code example, until we know which the UI reads.
       - context: span
         conditions:
           - 'span.name == "claude_code.llm_request"'
@@ -67,21 +88,36 @@ processors:
           - set(attributes["gen_ai.operation.name"], "chat")
           - set(span.name, Concat(["chat ", attributes["model"]], "")) where IsString(attributes["model"])
           - set(attributes["gen_ai.usage.input_tokens"], attributes["input_tokens"]) where IsInt(attributes["input_tokens"])
+          - set(attributes["gen_ai.usage.input_tokens"], attributes["input_tokens"] + attributes["cache_read_tokens"] + attributes["cache_creation_tokens"]) where IsInt(attributes["input_tokens"]) and IsInt(attributes["cache_read_tokens"]) and IsInt(attributes["cache_creation_tokens"])
           - set(attributes["gen_ai.usage.output_tokens"], attributes["output_tokens"]) where IsInt(attributes["output_tokens"])
+          - set(attributes["gen_ai.usage.cache_read.input_tokens"], attributes["cache_read_tokens"]) where IsInt(attributes["cache_read_tokens"])
+          - set(attributes["gen_ai.usage.cache_creation.input_tokens"], attributes["cache_creation_tokens"]) where IsInt(attributes["cache_creation_tokens"])
           - set(attributes["gen_ai.usage.cache_read_input_tokens"], attributes["cache_read_tokens"]) where IsInt(attributes["cache_read_tokens"])
           - set(attributes["gen_ai.usage.cache_creation_input_tokens"], attributes["cache_creation_tokens"]) where IsInt(attributes["cache_creation_tokens"])
 
-      # claude_code.tool: alias tool input/result onto gen_ai.tool.call.* so the
-      # AI Conversations viewer renders the tool detail panes. Requires
-      # OTEL_LOG_TOOL_DETAILS=1 + OTEL_LOG_TOOL_CONTENT=1 in Claude Code. Done
-      # before the rename blocks below so we match on the original span name and
-      # cover both the execute_tool and Task->subagent paths.
+      # Tool arguments onto gen_ai.tool.call.arguments. tool_input (the full input
+      # JSON) only exists under detailed beta tracing, so fall back to the command
+      # or file path, which OTEL_LOG_TOOL_DETAILS=1 puts on the span.
       - context: span
         conditions:
           - 'span.name == "claude_code.tool"'
         statements:
           - set(attributes["gen_ai.tool.call.arguments"], attributes["tool_input"]) where IsString(attributes["tool_input"])
-          - set(attributes["gen_ai.tool.call.result"], attributes["new_context"]) where IsString(attributes["new_context"])
+          - set(attributes["gen_ai.tool.call.arguments"], attributes["full_command"]) where not IsString(attributes["gen_ai.tool.call.arguments"]) and IsString(attributes["full_command"])
+          - set(attributes["gen_ai.tool.call.arguments"], attributes["file_path"]) where not IsString(attributes["gen_ai.tool.call.arguments"]) and IsString(attributes["file_path"])
+
+      # Tool results onto gen_ai.tool.call.result. With OTEL_LOG_TOOL_CONTENT=1,
+      # Claude Code puts tool output in a "tool.output" span event on the tool
+      # span: "output" for Bash/MCP/web tools, "content" for Read/Write, "diff"
+      # for Edit. Copy the first one present up to the span. Matched on span.type
+      # so it doesn't depend on whether the span has been renamed yet.
+      - context: spanevent
+        conditions:
+          - 'spanevent.name == "tool.output" and span.attributes["span.type"] == "tool"'
+        statements:
+          - set(span.attributes["gen_ai.tool.call.result"], spanevent.attributes["output"]) where IsString(spanevent.attributes["output"])
+          - set(span.attributes["gen_ai.tool.call.result"], spanevent.attributes["content"]) where not IsString(span.attributes["gen_ai.tool.call.result"]) and IsString(spanevent.attributes["content"])
+          - set(span.attributes["gen_ai.tool.call.result"], spanevent.attributes["diff"]) where not IsString(span.attributes["gen_ai.tool.call.result"]) and IsString(spanevent.attributes["diff"])
 
       # Subagent spawn  ->  invoke_agent {subagent_type}
       # Matched on subagent_type alone, not on tool_name: the spawning tool was
@@ -90,6 +126,7 @@ processors:
       # (subagent_type requires OTEL_LOG_TOOL_DETAILS=1 in Claude Code)
       # Conditions joined with explicit `and` because this OTTL build appears
       # to OR the entries in the conditions array.
+      # Claude Code labels this span execute_tool, so we overwrite the operation.
       - context: span
         conditions:
           - 'span.name == "claude_code.tool" and IsString(attributes["subagent_type"])'
@@ -102,15 +139,13 @@ processors:
       # Duration here includes the permission-wait child; tool_name lives only on
       # the parent .tool span, so we use it instead of claude_code.tool.execution.
       # The span.name check alone excludes spans the rule above already renamed.
-      # Do NOT guard on gen_ai.operation.name being absent: Claude Code now emits
+      # Do NOT guard on gen_ai.operation.name being absent: Claude Code emits
       # gen_ai.operation.name="execute_tool" itself, so that guard skipped every
       # span and nothing got renamed (JES-158).
       - context: span
         conditions:
           - 'span.name == "claude_code.tool"'
         statements:
-          - set(attributes["gen_ai.operation.name"], "execute_tool")
-          - set(attributes["gen_ai.tool.name"], attributes["tool_name"]) where IsString(attributes["tool_name"])
           - set(span.name, Concat(["execute_tool ", attributes["tool_name"]], "")) where IsString(attributes["tool_name"])
           - set(span.name, "execute_tool unknown") where not IsString(attributes["tool_name"])
 
