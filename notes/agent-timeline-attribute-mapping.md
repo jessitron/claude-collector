@@ -20,7 +20,7 @@ Span **name** must also follow a pattern:
 
 Recommended extras (Claude Code already supplies most of these): `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.response.finish_reasons`, `gen_ai.tool.name`, `gen_ai.tool.call.id`.
 
-## What Claude Code actually sends today
+## What Claude Code sent when we started
 
 Verified against trace `51e48a330e17ce8f7e19429d248256eb` in `claude-code-usage`:
 
@@ -37,23 +37,32 @@ Verified against trace `51e48a330e17ce8f7e19429d248256eb` in `claude-code-usage`
 - Already present (good): `session.id`, `gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.id`, `gen_ai.response.finish_reasons`, `model`, `input_tokens`, `total_tokens`, `tool_name`, `tool_use_id`, `agent_id`, `parent_agent_id`, `interaction.sequence`, `span.type`.
 - Missing for the timeline: `gen_ai.conversation.id`, `gen_ai.agent.name`, `gen_ai.operation.name`, and the renamed span names.
 
-## v1 collector transformations (see `config.yaml`)
+## What Claude Code sends natively now (2.1.308, checked 2026-10-22)
+
+Seen with `scripts/dump-raw-spans.sh`, before any transform:
+
+- Every span: `gen_ai.conversation.id` (= `session.id`), `gen_ai.provider.name = anthropic`, `span.type`.
+- `claude_code.interaction`: `gen_ai.operation.name = invoke_agent`.
+- `claude_code.llm_request`: `gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.id`, `gen_ai.response.finish_reasons`, `query_source_safe`. **No** `gen_ai.operation.name`, **no** `gen_ai.usage.*` (the Claude Code docs say so explicitly).
+- `claude_code.tool`: `gen_ai.operation.name = execute_tool` (even for the Agent tool), `gen_ai.tool.name`, `gen_ai.tool.call.id`. Tool output arrives as a `tool.output` **span event**, not an attribute.
+- Nowhere: `gen_ai.agent.name`, semconv span names.
+
+## Collector transformations (v0.8, see `config.yaml`)
 
 All applied as `transform` processor statements keyed on `span.name` (which the doc says always equals `span.type`).
 
 Unconditional on every span:
 
-- `gen_ai.conversation.id` ← `session.id`
 - `gen_ai.agent.name` ← `"Claude Code"` (default; overridden below for sub-agents)
 
 Per span type:
 
 | Source                                       | Set `gen_ai.operation.name` | Rewrite span name to            | Notes                                                                 |
 |----------------------------------------------|-----------------------------|---------------------------------|-----------------------------------------------------------------------|
-| `claude_code.interaction`                    | `invoke_agent`              | `invoke_agent Claude Code`      |                                                                       |
-| `claude_code.llm_request`                    | `chat`                      | `chat {model}`                  |                                                                       |
-| `claude_code.tool` (`subagent_type` set)     | `invoke_agent`              | `invoke_agent {subagent_type}`  | Also sets `gen_ai.agent.name = subagent_type`. Needs `OTEL_LOG_TOOL_DETAILS=1`. Matched on `subagent_type`, not tool name: the tool was `Task`, now `Agent`. |
-| `claude_code.tool` (other)                   | `execute_tool`              | `execute_tool {tool_name}`      | Also copies `tool_name` → `gen_ai.tool.name`. Falls back to `execute_tool unknown` if `tool_name` is absent. Condition is `span.name` only; see JES-158. |
+| `claude_code.interaction`                    | *(native)*                  | `invoke_agent Claude Code`      | Wraps `user_prompt` into `gen_ai.input.messages`.                     |
+| `claude_code.llm_request`                    | `chat`                      | `chat {model}`                  | If `query_source_safe` is `agent.builtin.<type>`, `gen_ai.agent.name = <type>`; if `agent.custom`, `"custom agent"`. |
+| `claude_code.tool` (`subagent_type` set)     | `invoke_agent` (overrides native `execute_tool`) | `invoke_agent {subagent_type}`  | Also sets `gen_ai.agent.name = subagent_type`. Needs `OTEL_LOG_TOOL_DETAILS=1`. Matched on `subagent_type`, not tool name: the tool was `Task`, now `Agent`. |
+| `claude_code.tool` (other)                   | *(native)*                  | `execute_tool {tool_name}`      | Falls back to `execute_tool unknown` if `tool_name` is absent. Condition is `span.name` only; see JES-158. |
 | `claude_code.tool.execution`                 | *(left as-is)*              | *(left as-is)*                  | Sits inside the timeline node above as nested detail.                 |
 | `claude_code.tool.blocked_on_user`           | *(left as-is)*              | *(left as-is)*                  |                                                                       |
 | `claude_code.hook`                           | *(left as-is)*              | *(left as-is)*                  |                                                                       |
@@ -64,25 +73,29 @@ On `claude_code.llm_request` (the future `chat {model}` span):
 
 | Source attribute | Aliased onto |
 |---|---|
-| `input_tokens` | `gen_ai.usage.input_tokens` |
+| `input_tokens + cache_read_tokens + cache_creation_tokens` | `gen_ai.usage.input_tokens` (semconv counts cache reads and writes as input; bare `input_tokens` is usually 2) |
 | `output_tokens` | `gen_ai.usage.output_tokens` |
-| `cache_read_tokens` | `gen_ai.usage.cache_read_input_tokens` |
-| `cache_creation_tokens` | `gen_ai.usage.cache_creation_input_tokens` |
+| `cache_read_tokens` | `gen_ai.usage.cache_read.input_tokens` and `gen_ai.usage.cache_read_input_tokens` |
+| `cache_creation_tokens` | `gen_ai.usage.cache_creation.input_tokens` and `gen_ai.usage.cache_creation_input_tokens` |
 
-On `claude_code.tool` (covers both the `execute_tool` and `invoke_agent {subagent_type}` rewrites — applied before the rename):
+The cache counts go out under two names: the dotted form is current semconv (the newest drafts say `cache_write` for creation), and the underscore form is from Honeycomb's older Claude Code example. Open question: which does the Honeycomb UI read? Once we know, drop the other.
 
-| Source attribute | Aliased onto | Requires |
+On `claude_code.tool` (covers both the `execute_tool` and `invoke_agent {subagent_type}` rewrites):
+
+| Source | Aliased onto | Requires |
 |---|---|---|
-| `tool_input` | `gen_ai.tool.call.arguments` | `OTEL_LOG_TOOL_DETAILS=1` + `OTEL_LOG_TOOL_CONTENT=1` |
-| `new_context` | `gen_ai.tool.call.result` | same |
+| `tool_input`, else `full_command`, else `file_path` | `gen_ai.tool.call.arguments` | `OTEL_LOG_TOOL_DETAILS=1`; `tool_input` also needs detailed beta tracing |
+| `tool.output` span event's `output`, else `content`, else `diff` | `gen_ai.tool.call.result` | `OTEL_LOG_TOOL_CONTENT=1` |
 
-`gen_ai.tool.call.id` is now emitted natively by Claude Code on `claude_code.tool` spans (observed 2026-10-21), along with `gen_ai.operation.name="execute_tool"`, `gen_ai.tool.name` and `gen_ai.provider.name`. Our `execute_tool` rule overwrites the first two with the same values, which is harmless. Aggregate `gen_ai.usage.*` on the parent `invoke_agent` span is also absent (per-call totals live on the `chat` children only); consumers compose at query time.
+The result rule runs in `spanevent` context and writes `span.attributes[...]`, which OTTL allows. Before v0.8 we aliased `tool_input`/`new_context`, but both are detailed-beta-only, so with detailed beta off those statements never fired.
 
-## Known v1 limitations
+Aggregate `gen_ai.usage.*` on the parent `invoke_agent` span is absent (per-call totals live on the `chat` children only); consumers compose at query time.
+
+## Known limitations
 
 1. **Tool duration includes permission wait.** We use the parent `claude_code.tool` because `tool_name` lives there and not on `claude_code.tool.execution`. That makes the timeline bar wider than the actual execution. Fix would need cross-span attribute propagation.
-2. **Sub-agent's own spans are labeled "Claude Code".** The Agent tool (formerly Task) spawns a sub-agent whose `claude_code.llm_request` / `claude_code.tool` spans nest under the parent's `claude_code.tool` span. They carry `agent_id` (UUID) but not the friendly `subagent_type`. Same propagation problem.
-3. **Sub-agent attribution requires `OTEL_LOG_TOOL_DETAILS=1`.** Without it, `subagent_type` is absent and subagent spawns show as `execute_tool Agent`.
+2. **Sub-agent's own tool spans are labeled "Claude Code".** Its `chat` spans are now named from `query_source_safe`, but its `claude_code.tool` spans carry only `agent_id` (a UUID), not `query_source_safe` or `subagent_type`. Same propagation problem.
+3. **Sub-agent attribution on the spawn span requires `OTEL_LOG_TOOL_DETAILS=1`.** Without it, `subagent_type` is absent and subagent spawns show as `execute_tool Agent`.
 
 ## Possible v2 directions
 

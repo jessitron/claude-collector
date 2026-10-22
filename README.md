@@ -90,19 +90,23 @@ The collector applies these transforms to traces (see `config.yaml`):
 | `claude_code.tool` (w/ `subagent_type`) | `invoke_agent {subagent_type}` | `invoke_agent` |
 | `claude_code.tool` (other) | `execute_tool {tool_name}`    | `execute_tool`          |
 
-Every span also gets `gen_ai.conversation.id` (copied from `session.id`) and `gen_ai.agent.name` (defaults to `"Claude Code"`, overridden to `subagent_type` for subagent invocations).
+Every span also gets `gen_ai.agent.name`: `"Claude Code"` by default, `subagent_type` on a subagent invocation, and the subagent's type (from `query_source_safe`, e.g. `Explore`) on a subagent's own `chat` spans. Claude Code already sets `gen_ai.conversation.id` itself. On `chat` spans, `gen_ai.usage.input_tokens` is input plus cache reads plus cache writes, per the GenAI semconv. On tool spans, `gen_ai.tool.call.arguments` and `.result` come from the command/file path and the `tool.output` span event.
 
 ### Known limitations
 
 - The timeline span for a tool call is the parent `claude_code.tool`, whose duration includes the time spent waiting for permission. The more accurate `claude_code.tool.execution` child doesn't carry `tool_name`, so we can't easily synthesize `execute_tool {tool_name}` on it without cross-span propagation.
-- A sub-agent's own nested spans (the `claude_code.llm_request` / `claude_code.tool` spans inside an Agent call) inherit the default `gen_ai.agent.name = "Claude Code"` instead of the sub-agent's name, for the same reason.
+- A sub-agent's own *tool* spans still say `gen_ai.agent.name = "Claude Code"`: they carry `agent_id` but not `query_source_safe`, so there's nothing on the span that names the agent.
 
 ### Gotcha: `BETA_TRACING_ENDPOINT` is HTTP, not gRPC
 
-Claude Code's `ENABLE_BETA_TRACING_DETAILED=1` exports through a separate `BETA_TRACING_ENDPOINT`, and it POSTs to `$BETA_TRACING_ENDPOINT/v1/traces` and `/v1/logs` — i.e. OTLP **HTTP** paths. Point it at the HTTP receiver port (`4328`), not the gRPC one (`4327`); otherwise the requests vanish into a gRPC listener and the `parent_of` span links you see on `chat` spans look like dead ends.
+Claude Code's `ENABLE_BETA_TRACING_DETAILED=1` exports through a separate `BETA_TRACING_ENDPOINT`, and it POSTs to `$BETA_TRACING_ENDPOINT/v1/traces` and `/v1/logs` — i.e. OTLP **HTTP** paths. Point it at the HTTP receiver port (`4328`), not the gRPC one (`4327`); otherwise the requests vanish into a gRPC listener.
+
+(The `parent_of` span link on every `chat` span is unrelated: it records the Anthropic API's `traceresponse` header and points at Anthropic's server-side trace, which we never receive.)
 
 ## Testing without Claude Code
 
 `scripts/send-test-span.sh` and `scripts/send-test-metric.sh` POST one synthetic span / metric to the collector. `scripts/validate-config.sh` checks `config.yaml` against the pinned collector image before you restart.
+
+With Claude Code: `scripts/smoke-turn.sh` sends one real turn (a Bash call, a Read, an Explore subagent) through the collector and prints its `session.id` to look up. `scripts/dump-raw-spans.sh` shows spans as Claude Code emits them, before any transform. Run it after a Claude Code upgrade to see which transforms are no longer needed.
 
 See `notes/` for the full mapping rationale and a list of open questions.

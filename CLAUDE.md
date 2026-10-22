@@ -2,28 +2,15 @@
 
 ## What this project does
 
-An OpenTelemetry Collector configuration that sits between [Claude Code](https://code.claude.com/docs/en/monitoring-usage) and [Honeycomb](https://www.honeycomb.io), shaping Claude Code's telemetry so it appears in Honeycomb's **Agent Timeline**. It also archives the shaped traces to S3 so they can become replay shapes ("menu items") in takeout-telemetry; see `notes/takeout-telemetry-supplier.md`. Claude Code already emits structured spans for interactions, LLM requests, tool calls, and hooks; the collector adds the three `gen_ai.*` attributes that Agent Timeline requires and rewrites span names to the conventions Honeycomb expects.
+An OpenTelemetry Collector configuration that sits between [Claude Code](https://code.claude.com/docs/en/monitoring-usage) and [Honeycomb](https://www.honeycomb.io), shaping Claude Code's telemetry so it appears in Honeycomb's **Agent Timeline**. It also archives the shaped traces to S3 so they can become replay shapes ("menu items") in takeout-telemetry; see `notes/takeout-telemetry-supplier.md`. Claude Code already emits structured spans for interactions, LLM requests, tool calls, and hooks; these days it also sets most of the `gen_ai.*` attributes Agent Timeline requires. The collector fills in the rest (`gen_ai.agent.name`, `chat` as the operation, token usage, tool I/O) and rewrites span names to the conventions Honeycomb expects.
 
-## Task tracking — use Linear, not a file
+## Task tracking — `TODO.md`
 
-Work on this repo is tracked in the private **jessitron** Linear team (key `JES`),
-in the **claude-collector** project:
-<https://linear.app/honeycombio/project/claude-collector-a55decd260c1>
-
-Use the Linear MCP (`list_issues` / `save_issue` with `project: "claude-collector"`,
-`team: "jessitron"`). `TODO.md` is retired — it's just a pointer now. When jessitron
-mentions something to track, create or update a JES issue rather than writing it to a
-file. This is part of her personal Linear-backed task system (set up 2026-05-28).
-
-**Capturing tasks — `create-task` skill is currently unavailable** (removed
-2026-05-29; pending reinstall via a new plugin — the old `.claude/skills/create-task/`
-symlink and the whole `.claude/skills/` dir are gone). Until it's back, capture tasks by
-using the **Linear MCP directly** (`save_issue` with `project: "claude-collector"`,
-`team: "jessitron"`) — search first (`list_issues`) so you link to a related issue rather
-than duplicating. When you spot incidental work mid-task — cleanup, something confusing, a
-case not covered, a follow-up — **fork a general-purpose subagent to file the Linear issue**
-and keep working; don't derail to do it yourself. Once the plugin is installed, restore the
-fork-a-subagent-that-runs-`create-task` flow here.
+Tasks live in `TODO.md` at the repo root, a plain checklist. Jessitron dropped Linear
+on 2026-10-22: don't file or look up Linear issues for this repo. (Old `JES-nnn`
+references in commits and notes are from the Linear era.) When you spot incidental
+work mid-task (cleanup, something confusing, a follow-up), add a line to `TODO.md`
+and keep going.
 
 ## How to run it
 
@@ -56,6 +43,7 @@ The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and
 | `scripts/send-test-span.sh` / `send-test-metric.sh` | POST one synthetic span / gauge point to the collector so you can check exporters (especially S3) without running Claude Code. |
 | `scripts/find-unrenamed-tool-spans.py` | Scan downloaded S3 `traces_*.json` objects for spans still named `claude_code.tool`, grouped by config version, listing which attributes they carry. Fetch objects with `aws s3 cp --recursive s3://<bucket>/claude-code/ <dir> --profile really-devrel-sandbox`, then `python3 -I scripts/find-unrenamed-tool-spans.py <dir>`. Diagnosed JES-158. |
 | `scripts/dump-raw-spans.sh`   | Run one tiny `claude -p` turn with the console trace exporter and save the spans *before* the collector touches them. Everything in Honeycomb and S3 is post-transform, so this is the only way to see what Claude Code emits natively. Re-run after Claude Code upgrades to find transforms that are no longer needed. |
+| `scripts/smoke-turn.sh`       | Send one real `claude -p` turn (Bash, Read, Explore subagent) through the running collector; prints the `session.id` to look up in Honeycomb. Exercises every rule in `transform/agent_timeline`. |
 | `scripts/validate-config.sh`  | Validate `config.yaml` against the same otelcol-contrib image we run, without bringing the receiver up. Catches YAML parse errors and OTTL errors. Run before `docker compose restart` on non-trivial edits — saves a "container failed to start, dig through compose logs" round trip. |
 | `notes/`                      | Working notes, design rationale, attribute-mapping table, open questions. |
 
@@ -131,28 +119,28 @@ The version column tells you which config generation produced each span.
 
 | Source span                                          | Becomes                          | `gen_ai.operation.name` |
 | ---------------------------------------------------- | -------------------------------- | ----------------------- |
-| `claude_code.interaction`                            | `invoke_agent Claude Code`       | `invoke_agent`          |
-| `claude_code.llm_request`                            | `chat {model}`                   | `chat`                  |
-| `claude_code.tool` (`subagent_type` set; Agent/Task) | `invoke_agent {subagent_type}`   | `invoke_agent`          |
-| `claude_code.tool` (anything else)                   | `execute_tool {tool_name}`       | `execute_tool`          |
+| `claude_code.interaction`                            | `invoke_agent Claude Code`       | `invoke_agent` (native) |
+| `claude_code.llm_request`                            | `chat {model}`                   | `chat` (we set it)      |
+| `claude_code.tool` (`subagent_type` set; Agent/Task) | `invoke_agent {subagent_type}`   | `invoke_agent` (we override native `execute_tool`) |
+| `claude_code.tool` (anything else)                   | `execute_tool {tool_name}`       | `execute_tool` (native) |
 | `claude_code.tool.execution` / `.blocked_on_user`    | *(left as-is; just marked + agent.name=Claude Code)* | *(unset)*  |
 | `claude_code.hook`                                   | *(left as-is; just marked + agent.name=Claude Code)* | *(unset)*  |
 
-Plus, universally: `gen_ai.conversation.id` ← `session.id`, and `gen_ai.agent.name = "Claude Code"` (overridden to `subagent_type` for the subagent rule).
+Claude Code sets `gen_ai.conversation.id` on every span itself, so we don't. We set `gen_ai.agent.name = "Claude Code"` on every span, overridden to `subagent_type` on the subagent spawn span, and to the subagent's type on its own `chat` spans (from `query_source_safe`: `agent.builtin.Explore` → `Explore`, `agent.custom` → `custom agent`).
 
 Attribute aliases (no rename, just enrichment onto the GenAI semconv):
 
-* On `claude_code.llm_request`: `input_tokens` / `output_tokens` / `cache_read_tokens` / `cache_creation_tokens` → `gen_ai.usage.{input,output,cache_read_input,cache_creation_input}_tokens`.
-* On `claude_code.tool` (applied before the rename, so covers both `execute_tool` and `invoke_agent {subagent_type}` paths): `tool_input` → `gen_ai.tool.call.arguments`, `new_context` → `gen_ai.tool.call.result`. Requires `OTEL_LOG_TOOL_DETAILS=1` + `OTEL_LOG_TOOL_CONTENT=1`.
+* On `claude_code.llm_request`: `gen_ai.usage.input_tokens` = `input_tokens + cache_read_tokens + cache_creation_tokens` (semconv counts cache as input; bare `input_tokens` is usually 2). `output_tokens` → `gen_ai.usage.output_tokens`. Cache counts go to both `gen_ai.usage.cache_{read,creation}.input_tokens` (current semconv) and `gen_ai.usage.cache_{read,creation}_input_tokens` (Honeycomb's old example) until we know which the UI reads.
+* On `claude_code.tool`: `gen_ai.tool.call.arguments` ← `tool_input` (detailed beta only), else `full_command`, else `file_path`. `gen_ai.tool.call.result` ← the `tool.output` span event's `output` / `content` / `diff`, copied up by a `spanevent`-context rule (needs `OTEL_LOG_TOOL_CONTENT=1`).
 
 Full rationale and open questions: `notes/agent-timeline-attribute-mapping.md`.
 
 ## Known limitations / open questions
 
 1. **Tool-call duration includes the permission wait.** We use the parent `claude_code.tool` span because `tool_name` only lives on the parent, not on `.execution`. To get accurate execution time *plus* the tool name, we'd need cross-span attribute propagation (parent → child), which standard OTTL processors don't do.
-2. **Sub-agent's own nested spans show `gen_ai.agent.name = "Claude Code"`.** When the Agent tool (formerly Task) spawns a sub-agent, the sub-agent's `claude_code.llm_request` and `claude_code.tool` spans nest under the parent's `claude_code.tool`. They carry `agent_id` (a UUID) but not the friendly `subagent_type` name. Same propagation problem as #1.
+2. **Sub-agent's own tool spans show `gen_ai.agent.name = "Claude Code"`.** Its `chat` spans get named from `query_source_safe`, but its `claude_code.tool` spans carry only `agent_id` (a UUID). Same propagation problem as #1.
 3. **`subagent_type` is gated behind `OTEL_LOG_TOOL_DETAILS=1`.** Without it, subagent spawns fall through to `execute_tool Agent`.
-4. **`BETA_TRACING_ENDPOINT` is OTLP HTTP, not gRPC.** Claude Code POSTs to `$BETA_TRACING_ENDPOINT/v1/traces` and `/v1/logs` -- HTTP-only paths. Point it at the collector's HTTP port (`4328`), not gRPC (`4327`). If pointed at gRPC, the requests silently disappear and the `parent_of` span link on every `chat` span looks like a dead end (the target trace is in valid OTel format, you just never receive it). Reference: github.com/honeycombio/autobots/blob/main/otelcol/collector.yaml. Open question: does the Detailed Beta receiver also need to authenticate or is plain OTLP enough? Verify once we have data flowing.
+4. **`BETA_TRACING_ENDPOINT` is OTLP HTTP, not gRPC.** Claude Code POSTs to `$BETA_TRACING_ENDPOINT/v1/traces` and `/v1/logs` -- HTTP-only paths. Point it at the collector's HTTP port (`4328`), not gRPC (`4327`). If pointed at gRPC, the requests silently disappear. (Separately: the `parent_of` span link on every `chat` span comes from the API's `traceresponse` header and points at Anthropic's server-side trace. We never receive that trace, whatever the settings.) Reference: github.com/honeycombio/autobots/blob/main/otelcol/collector.yaml. Open question: does the Detailed Beta receiver also need to authenticate or is plain OTLP enough? Verify once we have data flowing.
 5. **`OTEL_SERVICE_NAME` is commented out in `claude-env.sh`** so we can observe what Claude Code defaults to. Don't set it unless we decide we need to.
 6. **Metrics auto-route in Honeycomb.** The exporter sends no `x-honeycomb-dataset` header for metrics, so Honeycomb chooses. This means metrics land in an auto-named dataset rather than continuing to write to the existing `claude_code_metrics` dataset. If we ever want to keep writing there, add a per-pipeline exporter with the header.
 7. **otelcol-contrib logs a deprecation:** the `"otlp"` exporter alias should be `"otlp_grpc"`. Non-fatal but worth renaming when we touch the exporter.
@@ -163,8 +151,9 @@ Full rationale and open questions: `notes/agent-timeline-attribute-mapping.md`.
 Useful when debugging which env var to flip:
 
 * **`claude_code.interaction`** — emitted per user turn. Root of the trace.
-* **`claude_code.llm_request`** — every API call to Anthropic, including retries. Carries `gen_ai.request.model`, `input_tokens`, `output_tokens`, `agent_id` (for subagents).
-* **`claude_code.tool`** — parent span around a tool call. Has `tool_name`, and (with `OTEL_LOG_TOOL_DETAILS=1`) `subagent_type` for Agent (the tool formerly called Task) and `skill_name` for Skill. As of 2026-10-21 Claude Code also natively sets `gen_ai.operation.name="execute_tool"`, `gen_ai.tool.name`, `gen_ai.tool.call.id` and `gen_ai.provider.name` here.
+* **`claude_code.llm_request`** — every API call to Anthropic, including retries (each attempt is a `gen_ai.request.attempt` span event). Carries `gen_ai.request.model`, `input_tokens`, `output_tokens`, `agent_id` / `parent_agent_id` (for subagents), and `query_source_safe` (`repl_main_thread`, `sdk`, `agent.builtin.<type>`, `agent.custom`, `agent_summary`, ...).
+* **`claude_code.tool`** — parent span around a tool call. Has `tool_name`, and (with `OTEL_LOG_TOOL_DETAILS=1`) `full_command`, `file_path`, `subagent_type` for Agent (the tool formerly called Task) and `skill_name` for Skill. Claude Code natively sets `gen_ai.operation.name="execute_tool"`, `gen_ai.tool.name` and `gen_ai.tool.call.id` here. With `OTEL_LOG_TOOL_CONTENT=1`, tool output is a `tool.output` span event.
+* **Every span** natively carries `gen_ai.conversation.id`, `gen_ai.provider.name` and `span.type` (checked on 2.1.308). `scripts/dump-raw-spans.sh` shows the current truth.
 * **`claude_code.tool.execution`** — the actual run of the tool. Has `duration_ms`, `success`, `error`.
 * **`claude_code.tool.blocked_on_user`** — the time waiting for the permission prompt.
 * **`claude_code.hook`** — only emitted with `ENABLE_BETA_TRACING_DETAILED=1` *and* org allowlisting.
