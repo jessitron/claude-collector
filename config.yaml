@@ -21,17 +21,17 @@ processors:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.11")
+          - set(attributes["collector.claude-collector.version"], "0.14")
     metric_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.11")
+          - set(attributes["collector.claude-collector.version"], "0.14")
     log_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.11")
+          - set(attributes["collector.claude-collector.version"], "0.14")
 
   # Claude Code (checked on 2.1.308 with scripts/dump-raw-spans.sh) already sets
   # gen_ai.conversation.id and gen_ai.provider.name on every span,
@@ -98,16 +98,35 @@ processors:
           - set(attributes["gen_ai.usage.cache_read.input_tokens"], attributes["cache_read_tokens"]) where IsInt(attributes["cache_read_tokens"])
           - set(attributes["gen_ai.usage.cache_creation.input_tokens"], attributes["cache_creation_tokens"]) where IsInt(attributes["cache_creation_tokens"])
 
-      # Tool arguments onto gen_ai.tool.call.arguments. tool_input (the full input
-      # JSON) only exists under detailed beta tracing, so fall back to the command
-      # or file path, which OTEL_LOG_TOOL_DETAILS=1 puts on the span.
+      # Tool arguments onto gen_ai.tool.call.arguments, as a JSON object *string*.
+      # Semconv prefers a structured object but allows a JSON string; Honeycomb
+      # flattens a map attribute into gen_ai.tool.call.arguments.<key> columns, so
+      # the column Agent Timeline reads would vanish (seen in v0.13).
+      # tool_input (detailed beta tracing only) is "[TOOL INPUT: Bash]\n{...json}",
+      # so strip that first line (observed 2026-10-22); if the prefix goes away,
+      # ExtractPatterns fails, error_mode: ignore skips it, and the raw copy runs.
+      # Without tool_input, fall back to the command or file path that
+      # OTEL_LOG_TOOL_DETAILS=1 puts on the span, wrapped in the key tool_input
+      # uses: {"command": ...} / {"file_path": ...}. OTTL can parse JSON but not
+      # encode it, so we escape \ " and newline/tab/CR by hand (backslash first).
       - context: span
         conditions:
           - 'span.name == "claude_code.tool"'
         statements:
-          - set(attributes["gen_ai.tool.call.arguments"], attributes["tool_input"]) where IsString(attributes["tool_input"])
-          - set(attributes["gen_ai.tool.call.arguments"], attributes["full_command"]) where not IsString(attributes["gen_ai.tool.call.arguments"]) and IsString(attributes["full_command"])
-          - set(attributes["gen_ai.tool.call.arguments"], attributes["file_path"]) where not IsString(attributes["gen_ai.tool.call.arguments"]) and IsString(attributes["file_path"])
+          - 'set(attributes["gen_ai.tool.call.arguments"], ExtractPatterns(attributes["tool_input"], "^\\[TOOL INPUT: [^\\]]*\\]\\n(?P<json>(?s:.*))$")["json"]) where IsString(attributes["tool_input"])'
+          - set(attributes["gen_ai.tool.call.arguments"], attributes["tool_input"]) where not IsString(attributes["gen_ai.tool.call.arguments"]) and IsString(attributes["tool_input"])
+          - set(attributes["claude-collector.tmp.key"], "command") where not IsString(attributes["gen_ai.tool.call.arguments"]) and IsString(attributes["full_command"])
+          - set(attributes["claude-collector.tmp.key"], "file_path") where not IsString(attributes["gen_ai.tool.call.arguments"]) and not IsString(attributes["claude-collector.tmp.key"]) and IsString(attributes["file_path"])
+          - set(attributes["claude-collector.tmp.value"], attributes["full_command"]) where IsString(attributes["claude-collector.tmp.key"]) and attributes["claude-collector.tmp.key"] == "command"
+          - set(attributes["claude-collector.tmp.value"], attributes["file_path"]) where IsString(attributes["claude-collector.tmp.key"]) and attributes["claude-collector.tmp.key"] == "file_path"
+          - 'replace_pattern(attributes["claude-collector.tmp.value"], "\\\\", "\\\\") where IsString(attributes["claude-collector.tmp.value"])'
+          - 'replace_pattern(attributes["claude-collector.tmp.value"], "\"", "\\\"") where IsString(attributes["claude-collector.tmp.value"])'
+          - 'replace_pattern(attributes["claude-collector.tmp.value"], "\\n", "\\n") where IsString(attributes["claude-collector.tmp.value"])'
+          - 'replace_pattern(attributes["claude-collector.tmp.value"], "\\t", "\\t") where IsString(attributes["claude-collector.tmp.value"])'
+          - 'replace_pattern(attributes["claude-collector.tmp.value"], "\\r", "\\r") where IsString(attributes["claude-collector.tmp.value"])'
+          - 'set(attributes["gen_ai.tool.call.arguments"], Concat(["{\"", attributes["claude-collector.tmp.key"], "\":\"", attributes["claude-collector.tmp.value"], "\"}"], "")) where IsString(attributes["claude-collector.tmp.value"])'
+          - delete_key(attributes, "claude-collector.tmp.key")
+          - delete_key(attributes, "claude-collector.tmp.value")
 
       # Tool results onto gen_ai.tool.call.result. With OTEL_LOG_TOOL_CONTENT=1,
       # Claude Code puts tool output in a "tool.output" span event on the tool

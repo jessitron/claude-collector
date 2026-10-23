@@ -90,7 +90,7 @@ The collector applies these transforms to traces (see `config.yaml`):
 | `claude_code.tool` (w/ `subagent_type`) | `invoke_agent {subagent_type}` | `invoke_agent` |
 | `claude_code.tool` (other) | `execute_tool {tool_name}`    | `execute_tool`          |
 
-Every span also gets `gen_ai.agent.name`: `"Claude Code"` by default, `subagent_type` on a subagent invocation, and the subagent's type (from `query_source_safe`, e.g. `Explore`) on a subagent's own `chat` spans. Claude Code already sets `gen_ai.conversation.id` itself. On `chat` spans, `gen_ai.usage.input_tokens` is input plus cache reads plus cache writes, per the GenAI semconv. On tool spans, `gen_ai.tool.call.arguments` and `.result` come from the command/file path and the `tool.output` span event.
+Every span also gets `gen_ai.agent.name`: `"Claude Code"` by default, `subagent_type` on a subagent invocation, and the subagent's type (from `query_source_safe`, e.g. `Explore`) on a subagent's own `chat` spans. Claude Code already sets `gen_ai.conversation.id` itself. On `chat` spans, `gen_ai.usage.input_tokens` is input plus cache reads plus cache writes, per the GenAI semconv. On tool spans, `gen_ai.tool.call.arguments` is a JSON object string (from `tool_input`, or the command/file path), and `.result` comes from the `tool.output` span event. We stick to OTel semconv names and value shapes.
 
 ### Known limitations
 

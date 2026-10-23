@@ -84,7 +84,7 @@ On `claude_code.tool` (covers both the `execute_tool` and `invoke_agent {subagen
 
 | Source | Aliased onto | Requires |
 |---|---|---|
-| `tool_input`, else `full_command`, else `file_path` | `gen_ai.tool.call.arguments` | `OTEL_LOG_TOOL_DETAILS=1`; `tool_input` also needs detailed beta tracing |
+| `tool_input` (minus its `[TOOL INPUT: x]` line), else `{"command": full_command}`, else `{"file_path": file_path}` | `gen_ai.tool.call.arguments` (JSON object string) | `OTEL_LOG_TOOL_DETAILS=1`; `tool_input` also needs detailed beta tracing |
 | `tool.output` span event's `output`, else `content`, else `diff` | `gen_ai.tool.call.result` | `OTEL_LOG_TOOL_CONTENT=1` |
 
 The result rule runs in `spanevent` context and writes `span.attributes[...]`, which OTTL allows. Before v0.8 we aliased `tool_input`/`new_context`, but both are detailed-beta-only, so with detailed beta off those statements never fired.

@@ -37,10 +37,11 @@ The collector listens on `localhost:4327` (gRPC) and `localhost:4328` (HTTP) and
 | `config.yaml`                 | The collector config. Two processors: `transform/mark` and `transform/agent_timeline`. |
 | `docker-compose.yaml`         | One-service compose for `otel/opentelemetry-collector-contrib`, pinned to a version (keep in sync with `scripts/validate-config.sh`). Requires `transform` + `awss3` → must be contrib, not core. |
 | `run`                         | Sources `.env`, preflight-checks `HONEYCOMB_API_KEY`, `docker compose up`. |
-| `claude-env.sh`               | Sourceable env vars for `claude` — telemetry on, OTLP endpoint pointed at the collector, content gates set. Adds `vcs.repository.name` / `vcs.repository.url.full` resource attributes from the launch directory's git repo. |
+| `claude-env.sh`               | Sourceable env vars for `claude` — telemetry on, OTLP endpoint pointed at the collector, content gates set. Adds `vcs.repository.name` / `vcs.repository.url.full` resource attributes from the launch directory's git repo (origin normalized to `https://host/owner/repo`, no `.git`, per semconv). |
 | `.env.example` / `.env`       | `HONEYCOMB_API_KEY` (optionally `HONEYCOMB_API_ENDPOINT`), plus `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`S3_BUCKET`/`S3_PREFIX` for the S3 archive. `.env` is gitignored. |
 | `scripts/create-s3-supplier-user.sh` | Creates IAM user `takeout-telemetry-supplier` in really-devrel-sandbox (PutObject on one bucket prefix only) and writes its key + bucket vars into `.env`. Ignores `$AWS_PROFILE` on purpose. |
 | `scripts/send-test-span.sh` / `send-test-metric.sh` | POST one synthetic span / gauge point to the collector so you can check exporters (especially S3) without running Claude Code. |
+| `scripts/send-test-tool-span.sh` | POST a fake `claude_code.tool` span with no `tool_input` and a `full_command` full of quotes, backslashes, newline and tab, to check the hand-escaped `gen_ai.tool.call.arguments` fallback. |
 | `scripts/find-unrenamed-tool-spans.py` | Scan downloaded S3 `traces_*.json` objects for spans still named `claude_code.tool`, grouped by config version, listing which attributes they carry. Fetch objects with `aws s3 cp --recursive s3://<bucket>/claude-code/ <dir> --profile really-devrel-sandbox`, then `python3 -I scripts/find-unrenamed-tool-spans.py <dir>`. Diagnosed JES-158. |
 | `scripts/dump-raw-spans.sh`   | Run one tiny `claude -p` turn with the console trace exporter and save the spans *before* the collector touches them. Everything in Honeycomb and S3 is post-transform, so this is the only way to see what Claude Code emits natively. Re-run after Claude Code upgrades to find transforms that are no longer needed. |
 | `scripts/smoke-turn.sh`       | Send one real `claude -p` turn (Bash, Read, Explore subagent) through the running collector; prints the `session.id` to look up in Honeycomb. Exercises every rule in `transform/agent_timeline`. |
@@ -59,6 +60,16 @@ Claude Code  --OTLP-->  collector (transform/mark → transform/agent_timeline �
 * `transform/agent_timeline` runs **only on traces**. It does the Agent-Timeline-shaped rewrites of span name and `gen_ai.*` attributes.
 
 ## Conventions to keep
+
+### Stick with OTel semantic conventions
+
+Jessitron's rule: **semconv names and value shapes, unless there's a very good reason not to.** That covers attribute names and how values are formatted.
+- **No aliases or "compat" copies** under non-semconv names, even when a Honeycomb example or another collector config uses one. We dropped `gen_ai.usage.cache_read_input_tokens` in v0.11 for this reason.
+- **Values follow the attribute's semconv note.** `vcs.repository.url.full` is the https browser URL without `.git`. `gen_ai.tool.call.arguments` is a JSON object.
+- **Look before you add.** Before setting an attribute, look it up with the Honeycomb MCP `semconv` tool (`action: get`, `include_deprecated: true`). If semconv has no name for the concept, keep it out of the `gen_ai.*` / `vcs.*` namespaces (ours live under `collector.claude-collector*`).
+- **Document exceptions.** If you do deviate, write the reason in a `config.yaml` comment next to the statement.
+
+The one deviation so far is **structured attributes (`any` type) go out as JSON strings**, which semconv explicitly allows. In v0.13 we sent `gen_ai.tool.call.arguments` as an OTTL map. In Honeycomb it showed up only as `gen_ai.tool.call.arguments.<key>` columns, and the plain column was missing (query `dfakEKpnUZX`). Jessitron says Honeycomb doesn't flatten maps, so the cause is still open; see `TODO.md`. OTTL can `ParseJSON` but can't encode JSON, so building a JSON string from a plain value means escaping it by hand (see the tool-arguments rule).
 
 ### Bump the version on every config change
 
@@ -133,7 +144,7 @@ Claude Code sets `gen_ai.conversation.id` on every span itself, so we don't. We 
 Attribute aliases (no rename, just enrichment onto the GenAI semconv):
 
 * On `claude_code.llm_request`: `gen_ai.usage.input_tokens` = `input_tokens + cache_read_tokens + cache_creation_tokens` (semconv counts cache as input; bare `input_tokens` is usually 2). `output_tokens` → `gen_ai.usage.output_tokens`. Cache counts go to `gen_ai.usage.cache_{read,creation}.input_tokens` (semconv; matches Anthropic's `claude-api` telemetry). Before v0.11 we also wrote underscore names (`cache_read_input_tokens`, from Honeycomb's old example); those are gone on purpose.
-* On `claude_code.tool`: `gen_ai.tool.call.arguments` ← `tool_input` (detailed beta only), else `full_command`, else `file_path`. `gen_ai.tool.call.result` ← the `tool.output` span event's `output` / `content` / `diff`, copied up by a `spanevent`-context rule (needs `OTEL_LOG_TOOL_CONTENT=1`).
+* On `claude_code.tool`: `gen_ai.tool.call.arguments` is a JSON object string: `tool_input` (detailed beta only) with its `[TOOL INPUT: <tool>]` first line stripped, else `{"command": full_command}`, else `{"file_path": file_path}` (escaped by hand; test with `scripts/send-test-tool-span.sh`). `gen_ai.tool.call.result` ← the `tool.output` span event's `output` / `content` / `diff`, copied up by a `spanevent`-context rule (needs `OTEL_LOG_TOOL_CONTENT=1`).
 
 Full rationale and open questions: `notes/agent-timeline-attribute-mapping.md`.
 

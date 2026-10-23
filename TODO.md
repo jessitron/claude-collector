@@ -4,6 +4,12 @@ Task tracking for this repo lives here again. (It was in Linear, team `JES`, fro
 2026-05-28 to 2026-10-22; old issue numbers like JES-158 in commits and notes refer
 to that. Open Linear issues were not migrated.)
 
+- [ ] Why did v0.13's map-valued `gen_ai.tool.call.arguments` show up in Honeycomb only as
+      `gen_ai.tool.call.arguments.<key>` columns (query `dfakEKpnUZX`, session
+      `f0d02277-4bf7-4db6-8fc7-72743b8898bc`)? Jessitron says Honeycomb doesn't flatten
+      maps. Check the raw span (S3 archive or `scripts/dump-raw-spans.sh`-style console
+      export after the collector) and whether the MCP or the UI shows it differently.
+      If maps survive, switch structured attributes back to real objects (semconv's preference).
 - [ ] A subagent's own tool spans still say `gen_ai.agent.name = "Claude Code"`.
       They carry `agent_id` but nothing that names the agent. Options: a generic
       "subagent" label when `agent_id` is set, or cross-span propagation from the
