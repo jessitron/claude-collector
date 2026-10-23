@@ -96,6 +96,8 @@ Every span also gets `gen_ai.agent.name`: `"Claude Code"` by default, `subagent_
 
 - The timeline span for a tool call is the parent `claude_code.tool`, whose duration includes the time spent waiting for permission. The more accurate `claude_code.tool.execution` child doesn't carry `tool_name`, so we can't easily synthesize `execute_tool {tool_name}` on it without cross-span propagation.
 - A sub-agent's own *tool* spans still say `gen_ai.agent.name = "Claude Code"`: they carry `agent_id` but not `query_source_safe`, so there's nothing on the span that names the agent.
+- Message content on `chat` spans (`new_context`, `response.model_output`, ...) needs detailed beta tracing, which `claude-env.sh` turns on. Interactive sessions also need the org allowlisted by Anthropic; `claude -p` doesn't. The collector doesn't map these to `gen_ai.input.messages` / `gen_ai.output.messages` yet, so Agent Timeline doesn't show them as messages.
+- `scripts/dump-raw-spans.sh` doesn't turn on detailed beta tracing, so its output lacks those content attributes and `claude_code.hook`. Per the docs, detailed tracing sends spans to `BETA_TRACING_ENDPOINT`, so the console exporter wouldn't see them anyway (untested). Use `scripts/smoke-turn.sh` and look in Honeycomb instead.
 
 ### Gotcha: `BETA_TRACING_ENDPOINT` is HTTP, not gRPC
 
