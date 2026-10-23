@@ -21,17 +21,17 @@ processors:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.10")
+          - set(attributes["collector.claude-collector.version"], "0.11")
     metric_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.10")
+          - set(attributes["collector.claude-collector.version"], "0.11")
     log_statements:
       - context: resource
         statements:
           - set(attributes["collector.claude-collector"], "washere")
-          - set(attributes["collector.claude-collector.version"], "0.10")
+          - set(attributes["collector.claude-collector.version"], "0.11")
 
   # Claude Code (checked on 2.1.308 with scripts/dump-raw-spans.sh) already sets
   # gen_ai.conversation.id and gen_ai.provider.name on every span,
@@ -78,9 +78,9 @@ processors:
       # claude_code.llm_request  ->  chat {model}
       # Token usage onto the GenAI semconv (Claude Code sets no gen_ai.usage.*).
       # Semconv's input_tokens includes cache reads and writes; Claude Code's bare
-      # input_tokens doesn't (it's often 2), so we add them up. The cache counts go
-      # out under both the current semconv names (dotted) and the underscore names
-      # from Honeycomb's older Claude Code example, until we know which the UI reads.
+      # input_tokens doesn't (it's often 2), so we add them up. Cache counts use the
+      # semconv names (dotted: cache_read.input_tokens), which is also what
+      # Anthropic's own API telemetry uses.
       # The only span link here is "parent_of", from the API's traceresponse header.
       # It points at an Anthropic-internal trace that is never exported, so in
       # Honeycomb it's always a dead link. Drop it. (OTTL can't pick out one link,
@@ -97,8 +97,6 @@ processors:
           - set(attributes["gen_ai.usage.output_tokens"], attributes["output_tokens"]) where IsInt(attributes["output_tokens"])
           - set(attributes["gen_ai.usage.cache_read.input_tokens"], attributes["cache_read_tokens"]) where IsInt(attributes["cache_read_tokens"])
           - set(attributes["gen_ai.usage.cache_creation.input_tokens"], attributes["cache_creation_tokens"]) where IsInt(attributes["cache_creation_tokens"])
-          - set(attributes["gen_ai.usage.cache_read_input_tokens"], attributes["cache_read_tokens"]) where IsInt(attributes["cache_read_tokens"])
-          - set(attributes["gen_ai.usage.cache_creation_input_tokens"], attributes["cache_creation_tokens"]) where IsInt(attributes["cache_creation_tokens"])
 
       # Tool arguments onto gen_ai.tool.call.arguments. tool_input (the full input
       # JSON) only exists under detailed beta tracing, so fall back to the command

@@ -75,8 +75,8 @@ On `claude_code.llm_request` (the future `chat {model}` span):
 |---|---|
 | `input_tokens + cache_read_tokens + cache_creation_tokens` | `gen_ai.usage.input_tokens` (semconv counts cache reads and writes as input; bare `input_tokens` is usually 2) |
 | `output_tokens` | `gen_ai.usage.output_tokens` |
-| `cache_read_tokens` | `gen_ai.usage.cache_read.input_tokens` and `gen_ai.usage.cache_read_input_tokens` |
-| `cache_creation_tokens` | `gen_ai.usage.cache_creation.input_tokens` and `gen_ai.usage.cache_creation_input_tokens` |
+| `cache_read_tokens` | `gen_ai.usage.cache_read.input_tokens` |
+| `cache_creation_tokens` | `gen_ai.usage.cache_creation.input_tokens` |
 
 The cache counts go out under two names: the dotted form is current semconv (the newest drafts say `cache_write` for creation), and the underscore form is from Honeycomb's older Claude Code example. Open question: which does the Honeycomb UI read? Once we know, drop the other.
 

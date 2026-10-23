@@ -132,7 +132,7 @@ Claude Code sets `gen_ai.conversation.id` on every span itself, so we don't. We 
 
 Attribute aliases (no rename, just enrichment onto the GenAI semconv):
 
-* On `claude_code.llm_request`: `gen_ai.usage.input_tokens` = `input_tokens + cache_read_tokens + cache_creation_tokens` (semconv counts cache as input; bare `input_tokens` is usually 2). `output_tokens` → `gen_ai.usage.output_tokens`. Cache counts go to both `gen_ai.usage.cache_{read,creation}.input_tokens` (current semconv) and `gen_ai.usage.cache_{read,creation}_input_tokens` (Honeycomb's old example) until we know which the UI reads.
+* On `claude_code.llm_request`: `gen_ai.usage.input_tokens` = `input_tokens + cache_read_tokens + cache_creation_tokens` (semconv counts cache as input; bare `input_tokens` is usually 2). `output_tokens` → `gen_ai.usage.output_tokens`. Cache counts go to `gen_ai.usage.cache_{read,creation}.input_tokens` (semconv; matches Anthropic's `claude-api` telemetry). Before v0.11 we also wrote underscore names (`cache_read_input_tokens`, from Honeycomb's old example); those are gone on purpose.
 * On `claude_code.tool`: `gen_ai.tool.call.arguments` ← `tool_input` (detailed beta only), else `full_command`, else `file_path`. `gen_ai.tool.call.result` ← the `tool.output` span event's `output` / `content` / `diff`, copied up by a `spanevent`-context rule (needs `OTEL_LOG_TOOL_CONTENT=1`).
 
 Full rationale and open questions: `notes/agent-timeline-attribute-mapping.md`.
