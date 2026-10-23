@@ -31,9 +31,11 @@ export OTEL_RESOURCE_ATTRIBUTES="source=claude-code"
 # its parent repo's name rather than the worktree directory's.
 if _git_common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
   OTEL_RESOURCE_ATTRIBUTES="${OTEL_RESOURCE_ATTRIBUTES},vcs.repository.name=$(basename "$(dirname "$_git_common_dir")")"
-  # Strip any user:token@ from the URL before it goes into telemetry.
+  # Semconv wants the browser URL: https, no .git. So strip any user:token@,
+  # turn git@host:owner/repo or ssh://git@host/... into https://host/owner/repo,
+  # and drop a trailing .git.
   if _git_origin=$(git remote get-url origin 2>/dev/null); then
-    OTEL_RESOURCE_ATTRIBUTES="${OTEL_RESOURCE_ATTRIBUTES},vcs.repository.url.full=$(printf '%s' "$_git_origin" | sed -E 's#://[^@/]+@#://#')"
+    OTEL_RESOURCE_ATTRIBUTES="${OTEL_RESOURCE_ATTRIBUTES},vcs.repository.url.full=$(printf '%s' "$_git_origin" | sed -E -e 's#^ssh://([^@/]+@)?([^/:]+)(:[0-9]+)?/#https://\2/#' -e 's#^[^@/:]+@([^:/]+):#https://\1/#' -e 's#://[^@/]+@#://#' -e 's#\.git/?$##')"
   fi
   export OTEL_RESOURCE_ATTRIBUTES
 fi
