@@ -96,6 +96,10 @@ These bit us during the first real run. Don't repeat them.
 
 6. **Clear a pdata slice (`span.links`, `span.events`) with `nil`, not `[]`.** `set(span.links, [])` passes `validate-config.sh` but fails at runtime with `expects ptrace.SpanLinkSlice but got []interface {}`. With `error_mode: ignore` that's only a warn line in `docker compose logs`. `set(span.links, nil)` works. OTTL has no per-link context, so you can't drop just one link.
 
+7. **OTTL can parse JSON but not write it.** There's `ParseJSON`, and no encoder in 0.163.1 (we checked the binary's `ottlfuncs`). To build a JSON string from a plain value, escape it with `replace_pattern` (backslash first, then `"`, `\n`, `\t`, `\r`) and `Concat`. The tool-arguments rule in `config.yaml` is the worked example. Escaping goes through three layers. YAML single quotes leave backslashes alone. OTTL string literals halve them. The pattern is a regex but the replacement isn't. So doubling a backslash is `replace_pattern(x, "\\\\", "\\\\")`.
+
+8. **Chain fallbacks on `error_mode: ignore`.** A statement whose converter fails (an `ExtractPatterns` that doesn't match, a `ParseJSON` of non-JSON) is skipped. So write "try A; then B `where` A's result isn't set" as consecutive statements.
+
 The full pattern these gotchas push you toward:
 
 ```yaml

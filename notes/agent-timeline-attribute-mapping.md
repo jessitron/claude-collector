@@ -47,7 +47,7 @@ Seen with `scripts/dump-raw-spans.sh`, before any transform:
 - `claude_code.tool`: `gen_ai.operation.name = execute_tool` (even for the Agent tool), `gen_ai.tool.name`, `gen_ai.tool.call.id`. Tool output arrives as a `tool.output` **span event**, not an attribute.
 - Nowhere: `gen_ai.agent.name`, semconv span names.
 
-## Collector transformations (v0.10, see `config.yaml`)
+## Collector transformations (v0.14, see `config.yaml`)
 
 All applied as `transform` processor statements keyed on `span.name` (which the doc says always equals `span.type`).
 
@@ -78,7 +78,7 @@ On `claude_code.llm_request` (the future `chat {model}` span):
 | `cache_read_tokens` | `gen_ai.usage.cache_read.input_tokens` |
 | `cache_creation_tokens` | `gen_ai.usage.cache_creation.input_tokens` |
 
-The cache counts go out under two names: the dotted form is current semconv (the newest drafts say `cache_write` for creation), and the underscore form is from Honeycomb's older Claude Code example. Open question: which does the Honeycomb UI read? Once we know, drop the other.
+The cache counts use the dotted semconv names only, matching Anthropic's own `claude-api` telemetry. Until v0.11 we also wrote underscore copies (`cache_read_input_tokens`, from Honeycomb's older Claude Code example); dropped to stick with semconv. (Semconv 1.41.0 still says `cache_creation`; the newest drafts may say `cache_write`. Watch for that.)
 
 On `claude_code.tool` (covers both the `execute_tool` and `invoke_agent {subagent_type}` rewrites):
 
