@@ -37,7 +37,7 @@ Verified against trace `51e48a330e17ce8f7e19429d248256eb` in `claude-code-usage`
 - Already present (good): `session.id`, `gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.id`, `gen_ai.response.finish_reasons`, `model`, `input_tokens`, `total_tokens`, `tool_name`, `tool_use_id`, `agent_id`, `parent_agent_id`, `interaction.sequence`, `span.type`.
 - Missing for the timeline: `gen_ai.conversation.id`, `gen_ai.agent.name`, `gen_ai.operation.name`, and the renamed span names.
 
-## What Claude Code sends natively now (2.1.308, checked 2026-10-22)
+## What Claude Code sends natively now (2.1.308, checked 2026-10-22; unchanged on 2.1.318, 2026-11-04)
 
 Seen with `scripts/dump-raw-spans.sh`, before any transform:
 

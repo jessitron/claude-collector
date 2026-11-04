@@ -12,6 +12,13 @@
 set -euo pipefail
 out="${1:-raw-spans.txt}"
 
+# When launched from inside a Claude Code session (an agent running this script),
+# the child claude inherits the parent's session vars and prints no spans at all.
+# Clear them, plus the parent's trace context and beta-tracing endpoint.
+unset CLAUDECODE CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ID CLAUDE_CODE_ENTRYPOINT \
+  CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_PID \
+  TRACEPARENT TRACESTATE BETA_TRACING_ENDPOINT ENABLE_BETA_TRACING_DETAILED
+
 export CLAUDE_CODE_ENABLE_TELEMETRY=1
 export CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1
 export OTEL_TRACES_EXPORTER=console
